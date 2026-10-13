@@ -80,27 +80,38 @@ function DraggablePendingCard() {
   );
 }
 
-interface ChallengeUnderCardProps {
-  challengeSeconds: number;
+/** A player on this device who may challenge the current placement */
+export interface LocalChallenger {
+  id: string;
+  label: string;
+  doneLabel: string;
   hasChallenged: boolean;
-  onChallenge: () => void;
 }
 
-function ChallengeUnderCard({ challengeSeconds, hasChallenged, onChallenge }: ChallengeUnderCardProps) {
+interface ChallengeUnderCardProps {
+  challengeSeconds: number;
+  challengers: LocalChallenger[];
+  onChallenge: (challengerId: string) => void;
+}
+
+function ChallengeUnderCard({ challengeSeconds, challengers, onChallenge }: ChallengeUnderCardProps) {
   return (
     <div className="timeline-challenge-panel">
       <span className="timeline-challenge-timer" aria-live="polite">
         {challengeSeconds}s
       </span>
-      <button
-        type="button"
-        className="action-btn btn-challenge-timeline"
-        onClick={onChallenge}
-        disabled={hasChallenged || challengeSeconds <= 0}
-        data-testid="challenge-btn"
-      >
-        {hasChallenged ? 'Challenged ✓' : 'Challenge'}
-      </button>
+      {challengers.map(c => (
+        <button
+          key={c.id}
+          type="button"
+          className="action-btn btn-challenge-timeline"
+          onClick={() => onChallenge(c.id)}
+          disabled={c.hasChallenged || challengeSeconds <= 0}
+          data-testid="challenge-btn"
+        >
+          {c.hasChallenged ? c.doneLabel : c.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -113,8 +124,8 @@ interface GapDropZoneProps {
   showFaceDown: boolean;
   showChallengeBelow: boolean;
   challengeSeconds: number;
-  onChallenge?: () => void;
-  hasChallenged?: boolean;
+  onChallenge?: (challengerId: string) => void;
+  challengers: LocalChallenger[];
   onSelect: (index: number) => void;
 }
 
@@ -127,7 +138,7 @@ function GapDropZone({
   showChallengeBelow,
   challengeSeconds,
   onChallenge,
-  hasChallenged,
+  challengers,
   onSelect,
 }: GapDropZoneProps) {
   const { isOver, setNodeRef } = useDroppable({
@@ -144,7 +155,7 @@ function GapDropZone({
         {showChallengeBelow && onChallenge && (
           <ChallengeUnderCard
             challengeSeconds={challengeSeconds}
-            hasChallenged={hasChallenged ?? false}
+            challengers={challengers}
             onChallenge={onChallenge}
           />
         )}
@@ -184,8 +195,9 @@ export interface TimelineViewProps {
   /** Show HITSTER! under the face-down card at the placed gap (spectator watch timeline) */
   showHitsterUnderPlacement?: boolean;
   challengeDeadline?: number | null;
-  onChallenge?: () => void;
-  hasChallenged?: boolean;
+  onChallenge?: (challengerId: string) => void;
+  /** Players on this device who can challenge (one button each) */
+  challengers?: LocalChallenger[];
   /** Inline correct/wrong animation at the placed card index */
   flipReveal?: FlipRevealState | null;
 }
@@ -205,7 +217,7 @@ export function TimelineView({
   showHitsterUnderPlacement = false,
   challengeDeadline = null,
   onChallenge,
-  hasChallenged = false,
+  challengers = [],
   flipReveal = null,
 }: TimelineViewProps) {
   const canPlace =
@@ -259,7 +271,7 @@ export function TimelineView({
     showHitsterUnderPlacement && onChallenge ? (
       <ChallengeUnderCard
         challengeSeconds={challengeSeconds}
-        hasChallenged={hasChallenged}
+        challengers={challengers}
         onChallenge={onChallenge}
       />
     ) : null;
@@ -324,7 +336,7 @@ export function TimelineView({
                 showChallengeBelow={showHitsterUnderPlacement && isPlaced && showFaceDown}
                 challengeSeconds={challengeSeconds}
                 onChallenge={onChallenge}
-                hasChallenged={hasChallenged}
+                challengers={challengers}
                 onSelect={onSelectPosition}
               />
             )}

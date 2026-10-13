@@ -710,7 +710,12 @@ io.on('connection', (socket) => {
     challenges.push({ challengerId: sessionId });
     pendingChallenges.set(session.roomCode, challenges);
 
-    const withLog = gameLog.logChallenge(room, sessionId);
+    // Mirror into room state so room:updated doesn't wipe the client's "already challenged"
+    const withChallenge: Room = {
+      ...room,
+      activeRound: { ...room.activeRound, currentTurn: { ...currentTurn, challenges: [...challenges] } },
+    };
+    const withLog = gameLog.logChallenge(withChallenge, sessionId);
     store.set(withLog);
     io.to(session.roomCode).emit('turn:challenged', { challengerId: sessionId });
     io.to(session.roomCode).emit('room:updated', withLog);

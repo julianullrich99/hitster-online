@@ -2136,3 +2136,57 @@ body {
   color: #4ade80;
 }
 
+
+.field-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 6px;
+}
+
+.join-code-row {
+  display: flex;
+  gap: 8px;
+}
+.join-code-row .form-input {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 13px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-align: center;
+}
+.btn-join-code {
+  width: auto;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  background: transparent;
+  border-color: #4ade80;
+  color: #4ade80;
+}
+
+.hotseat-banner {
+  margin: 12px auto 0;
+  padding: 10px 18px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  border: 2px solid #fbbf24;
+  text-align: center;
+  flex-shrink: 0;
+  animation: flip-badge-pop-plain 0.5s ease-out;
+}
+@keyframes flip-badge-pop-plain {
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.lobby-local-hint {
+  font-size: 13px;
+  color: #9ca3af;
+  line-height: 1.4;
+  margin: 6px 0 10px;
+}
+.lobby-local-badge { font-size: 12px; }
+
+.lobby-team-row .lobby-team-btn:last-child { margin-left: auto; }

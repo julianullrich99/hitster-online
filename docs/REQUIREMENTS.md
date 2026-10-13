@@ -54,6 +54,13 @@ _What the system does from a player's perspective. No technical detail._
 - Players can join/leave teams between rounds. Teams carry over unless changed.
 - A round in team mode requires at least 2 teams, each with at least 1 player.
 
+### 1.3.1 Local Versus (Hot-Seat)
+- Several players can play on **one device** (TV, laptop, shared PC). In the lobby, any player can add more players "on this device" by name and remove them again.
+- Every local player is a normal room participant (own timeline, tokens, turns); online players can join the same room as usual.
+- The screen follows the turn: when a local player is on turn, the device shows their timeline, tokens and actions, with a "<name>'s turn" banner.
+- During the challenge window, each local player who is not placing gets their own **challenge** button.
+- Hidden information (blurred album art for the active player) is not meaningful on a shared screen and is accepted as such.
+
 ### 1.4 Round Configuration
 Before each round, the room owner sets:
 

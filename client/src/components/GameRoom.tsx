@@ -7,6 +7,7 @@ import {
   FLIP_REVEAL_DISPLAY_MS,
 } from '../../../shared/constants';
 import type { Room, Card, CardHidden, GameMode, Player, Team } from '../../../shared/types';
+import type { LocalPlayer } from '../game/useGame';
 import TrackPreviewModal from './TrackPreviewModal';
 import { PlaylistAutocomplete } from './PlaylistAutocomplete';
 import { TimelineView } from './TimelineView';
@@ -81,6 +82,8 @@ interface PlayerListProps {
   activeTurnLabel: string;
   isMyTurn: boolean;
   sessionId: string;
+  /** All players on this device (main + hot-seat) */
+  localIds: string[];
 }
 
 function PlayerList({
@@ -89,7 +92,9 @@ function PlayerList({
   activeTurnLabel,
   isMyTurn,
   sessionId,
+  localIds,
 }: PlayerListProps) {
+  const isHotSeat = localIds.length > 1;
   const players = Object.values(room.players).filter((p) => !p.isSpectator);
   const round = room.activeRound;
 
@@ -100,7 +105,7 @@ function PlayerList({
       : room.useTeams && pTeamId
         ? activePlayerId === pTeamId
         : p.id === activePlayerId;
-    const isMe = p.id === sessionId;
+    const isMe = localIds.includes(p.id);
     const entityKey = round?.config.mode === 'cooperative' ? 'cooperative'
       : (room.useTeams && pTeamId ? pTeamId : p.id);
     const timeline = round?.timelines[entityKey];
@@ -117,7 +122,7 @@ function PlayerList({
         </div>
         <div className="player-info">
           <div className="player-name">
-            {isMe ? 'You' : p.displayName}
+            {isMe && !isHotSeat ? 'You' : p.displayName}
             {isActive && <span className="player-turn-badge">TURN</span>}
             {!p.isConnected && (
               <span className="player-disconnected-badge">⚡ offline</span>
@@ -147,7 +152,7 @@ function PlayerList({
         >
           <div className="sidebar-turn-status-main">
             <div className="sidebar-turn-who">
-              {isMyTurn ? 'your turn' : `${activeTurnLabel}'s turn`}
+              {isMyTurn && !isHotSeat ? 'your turn' : `${activeTurnLabel}'s turn`}
             </div>
           </div>
         </div>
@@ -583,9 +588,12 @@ interface LobbyScreenProps {
   onClearPlaylistPreview: () => void;
   playlistPreviewCards: Card[] | null;
   playlistPreviewLoading: boolean;
+  localPlayers: LocalPlayer[];
+  onAddLocalPlayer: (name: string) => void;
+  onRemoveLocalPlayer: (id: string) => void;
 }
 
-function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, onLeaveTeam, onLeave, socketError, onPreviewPlaylist, onClearPlaylistPreview, playlistPreviewCards, playlistPreviewLoading }: LobbyScreenProps) {
+function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, onLeaveTeam, onLeave, socketError, onPreviewPlaylist, onClearPlaylistPreview, playlistPreviewCards, playlistPreviewLoading, localPlayers, onAddLocalPlayer, onRemoveLocalPlayer }: LobbyScreenProps) {
   const isOwner = room.ownerId === sessionId;
   const players = Object.values(room.players);
   const [playlistLabel, setPlaylistLabel] = useState('');
@@ -594,6 +602,8 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
   const [tokensEnabled, setTokensEnabled] = useState(true);
   const [starting, setStarting] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
+  const [newLocalName, setNewLocalName] = useState('');
+  const localIds = new Set([sessionId, ...localPlayers.map(p => p.id)]);
 
   useEffect(() => {
     if (socketError) setStarting(false);
@@ -605,6 +615,13 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
   function handleStart() {
     setStarting(true);
     onStartRound(mode, playlistLabel.trim() || undefined, cardsToWin, tokensEnabled);
+  }
+
+  function handleAddLocal() {
+    const name = newLocalName.trim();
+    if (!name) return;
+    onAddLocalPlayer(name);
+    setNewLocalName('');
   }
 
   function handleCreateTeam() {
@@ -632,6 +649,9 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
               <span data-testid="lobby-player-name">{p.displayName}</span>
               {p.id === room.ownerId && (
                 <span style={{ fontSize: 10, color: '#fbbf24' }}>★</span>
+              )}
+              {localIds.size > 1 && localIds.has(p.id) && (
+                <span className="lobby-local-badge" title="Plays on this device">📺</span>
               )}
               {!p.isConnected && (
                 <span className="player-disconnected-badge">offline</span>
@@ -729,6 +749,52 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
         </>
       )}
 
+      {/* ── Hot-seat: more players on this device ── */}
+      <div className="lobby-teams-section" data-testid="local-players-section">
+        <div className="lobby-config-label">Players on this device</div>
+        <div className="lobby-local-hint">
+          Playing together on one screen (TV, laptop)? Add everyone here — turns are passed
+          around on this device. Others can still join online.
+        </div>
+        {localPlayers.length > 0 && (
+          <div className="lobby-teams-list">
+            {localPlayers.map(lp => (
+              <div key={lp.id} className="lobby-team-row" data-testid="local-player-row">
+                <div className="lobby-team-name">{lp.name}</div>
+                <button
+                  className="lobby-team-btn leave"
+                  onClick={() => onRemoveLocalPlayer(lp.id)}
+                  data-testid="remove-local-player-btn"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="lobby-create-team-row">
+          <input
+            className="form-input"
+            type="text"
+            placeholder="Player name…"
+            maxLength={24}
+            value={newLocalName}
+            onChange={e => setNewLocalName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddLocal()}
+            data-testid="local-player-name-input"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            className="lobby-team-btn"
+            disabled={!newLocalName.trim()}
+            onClick={handleAddLocal}
+            data-testid="add-local-player-btn"
+          >
+            + Add
+          </button>
+        </div>
+      </div>
+
       {/* ── Teams section ── */}
       <div className="lobby-teams-section">
         <div className="lobby-config-label">Teams (optional)</div>
@@ -823,12 +889,13 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
 
 interface TokenPanelProps {
   myTokens: number;
+  label: string;
 }
 
-function TokenPanel({ myTokens }: TokenPanelProps) {
+function TokenPanel({ myTokens, label }: TokenPanelProps) {
   return (
     <div className="token-panel-header">
-      <span className="token-panel-label">YOUR TOKENS</span>
+      <span className="token-panel-label">{label}</span>
       <div className="token-row">
         {Array.from({ length: 5 }, (_, i) => (
           <div key={i} className={`token-circle${i >= myTokens ? ' empty' : ''}`}>
@@ -858,15 +925,19 @@ export interface GameRoomProps {
     challengeResults: Array<{ challengerId: string; outcome: 'stole_card' | 'lost_token' }>;
   } | null;
   roundEnded: { winnerId: string | null } | null;
-  myTokens: number;
+  /** This device's main player */
   sessionId: string;
+  /** Extra hot-seat players on this device */
+  localPlayers: LocalPlayer[];
   socketError?: string | null;
   onStartRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => void;
-  onPlaceCard: (position: number) => void;
-  onChallengeCard: () => void;
-  onSkipCard: () => void;
-  onNameSong: (title: string, artist: string, year?: number) => void;
-  onBuyCard: () => void;
+  onPlaceCard: (actorId: string, position: number) => void;
+  onChallengeCard: (actorId: string) => void;
+  onSkipCard: (actorId: string) => void;
+  onNameSong: (actorId: string, title: string, artist: string, year?: number) => void;
+  onBuyCard: (actorId: string) => void;
+  onAddLocalPlayer: (name: string) => void;
+  onRemoveLocalPlayer: (id: string) => void;
   onDismissRoundEnd: () => void;
   onCreateTeam: (name: string) => void;
   onJoinTeam: (teamId: string) => void;
@@ -888,8 +959,8 @@ export default function GameRoom({
   playAt,
   lastFlip,
   roundEnded,
-  myTokens,
-  sessionId,
+  sessionId: primaryId,
+  localPlayers,
   socketError,
   onStartRound,
   onPlaceCard,
@@ -897,6 +968,8 @@ export default function GameRoom({
   onSkipCard,
   onNameSong,
   onBuyCard,
+  onAddLocalPlayer,
+  onRemoveLocalPlayer,
   onDismissRoundEnd,
   onCreateTeam,
   onJoinTeam,
@@ -916,23 +989,39 @@ export default function GameRoom({
     correct: boolean;
     timelineEntityId: string;
   } | null>(null);
-  const [hasChallenged, setHasChallenged] = useState(false);
   const [nameSongTitle, setNameSongTitle] = useState('');
   const [nameSongArtist, setNameSongArtist] = useState('');
   const [nameSongYear, setNameSongYear] = useState('');
 
   const round = room.activeRound;
   const isCooperative = round?.config.mode === 'cooperative';
-  const myTeamId = Object.entries(room.teams).find(([, t]) => t.playerIds.includes(sessionId))?.[0];
-  const isSpectator = room.players[sessionId]?.isSpectator === true;
   const resolvedActivePlayerId =
     activePlayerId ?? round?.currentTurn?.activeId ?? null;
+
+  // Hot-seat: the screen shows the perspective of whichever local player is on turn,
+  // otherwise the main player's. All "my …" values below refer to that viewer.
+  const localIds = useMemo(
+    () => [primaryId, ...localPlayers.map(p => p.id)],
+    [primaryId, localPlayers],
+  );
+  const isHotSeat = localIds.length > 1;
+  const isParticipantOf = (playerId: string, entityId: string | null) =>
+    entityId !== null && (entityId === playerId || (room.teams[entityId]?.playerIds.includes(playerId) ?? false));
+  const activeLocalId = isCooperative
+    ? undefined
+    : localIds.find(id => isParticipantOf(id, resolvedActivePlayerId));
+  const sessionId = activeLocalId ?? primaryId;
+  const viewerName = room.players[sessionId]?.displayName ?? 'You';
+
+  const myTeamId = Object.entries(room.teams).find(([, t]) => t.playerIds.includes(sessionId))?.[0];
+  const isSpectator = room.players[sessionId]?.isSpectator === true;
   const isActivePlayer = !isSpectator && (isCooperative
     ? resolvedActivePlayerId !== null  // anyone can act in cooperative (handled server-side)
     : room.useTeams && myTeamId
       ? resolvedActivePlayerId === myTeamId
       : resolvedActivePlayerId === sessionId);
   const timelineKey = isCooperative ? 'cooperative' : (room.useTeams && myTeamId ? myTeamId : sessionId);
+  const myTokens = round?.tokens[timelineKey] ?? 0;
   const myTimeline = round?.timelines[timelineKey];
   const myCards = myTimeline?.cards ?? [];
   const activeEntityId =
@@ -957,10 +1046,13 @@ export default function GameRoom({
   const challengeDeadline = isInChallengePhase ? (currentTurn?.challengeDeadline ?? null) : null;
 
   const activeName = activePlayerDisplayName(room, resolvedActivePlayerId);
+  const placeHint = placedPosition === null ? 'Drag the card into a gap, or tap a gap' : 'placed';
   const mainTimelineLabel = watchingOther
     ? `${activeName.toUpperCase()}'S TIMELINE — watch where they place`
     : isActivePlayer
-      ? 'YOUR TIMELINE — Drag the card into a gap, or click a gap'
+      ? isHotSeat && !isCooperative
+        ? `${activeName.toUpperCase()}'S TIMELINE — ${placeHint}`
+        : `YOUR TIMELINE — ${placeHint}`
       : 'TIMELINE';
   const mainCards = watchingOther ? activeCards : myCards;
   const mainTimelineEntityId = watchingOther ? activeEntityId : timelineKey;
@@ -980,12 +1072,19 @@ export default function GameRoom({
     [round?.gameLog],
   );
 
-  // Reset challenge flag when a new place phase starts
-  useEffect(() => {
-    if (currentTurn?.phase === 'place') {
-      setHasChallenged(false);
-    }
-  }, [resolvedActivePlayerId, currentTurn?.phase]);
+  // Everyone on this device who may shout HITSTER! on the current placement
+  const challengers =
+    isInChallengePhase && !isCooperative
+      ? localIds
+          .filter(id => room.players[id] && !room.players[id].isSpectator)
+          .filter(id => !isParticipantOf(id, resolvedActivePlayerId))
+          .map(id => ({
+            id,
+            label: isHotSeat ? `Challenge: ${room.players[id].displayName}` : 'Challenge',
+            doneLabel: isHotSeat ? `${room.players[id].displayName} ✓` : 'Challenged ✓',
+            hasChallenged: currentTurn?.challenges?.some(c => c.challengerId === id) ?? false,
+          }))
+      : [];
 
   // Show flip result for FLIP_REVEAL_DISPLAY_MS (survives turn:started clearing lastFlip)
   useEffect(() => {
@@ -1016,20 +1115,24 @@ export default function GameRoom({
     };
   }, [showFlipResult]);
 
+  // Hot-seat hand-over: drop a half-made selection when the screen switches players
+  useEffect(() => {
+    setSelectedPosition(null);
+  }, [sessionId]);
+
   function handleSelectPosition(pos: number) {
     setSelectedPosition(pos);
   }
 
   function handleConfirmPlace() {
     if (selectedPosition === null) return;
-    onPlaceCard(selectedPosition);
+    onPlaceCard(sessionId, selectedPosition);
     setSelectedPosition(null);
   }
 
-  function handleChallenge() {
-    if (hasChallenged) return;
-    onChallengeCard();
-    setHasChallenged(true);
+  function handleChallenge(challengerId: string) {
+    if (challengers.find(c => c.id === challengerId)?.hasChallenged) return;
+    onChallengeCard(challengerId);
   }
 
   // Game over screen — room permanently ended by owner
@@ -1105,6 +1208,9 @@ export default function GameRoom({
           onClearPlaylistPreview={onClearPlaylistPreview}
           playlistPreviewCards={playlistPreviewCards}
           playlistPreviewLoading={playlistPreviewLoading}
+          localPlayers={localPlayers}
+          onAddLocalPlayer={onAddLocalPlayer}
+          onRemoveLocalPlayer={onRemoveLocalPlayer}
         />
       </div>
     );
@@ -1123,7 +1229,12 @@ export default function GameRoom({
         <HitsterLogo />
         <div className="room-code-badge">ROOM: {room.code}</div>
         <div className="game-header-actions">
-          {!isSpectator && <TokenPanel myTokens={myTokens} />}
+          {!isSpectator && round?.config.tokensEnabled !== false && (
+            <TokenPanel
+              myTokens={myTokens}
+              label={isHotSeat && !isCooperative ? `${viewerName}'s tokens` : 'Your tokens'}
+            />
+          )}
           <button type="button" className="header-leave-btn" onClick={onLeave} data-testid="leave-btn">
             Leave
           </button>
@@ -1138,10 +1249,16 @@ export default function GameRoom({
           activeTurnLabel={activeName}
           isMyTurn={isActivePlayer && !isSpectator}
           sessionId={sessionId}
+          localIds={localIds}
         />
 
         {/* CENTER: Gameplay */}
         <div className={`center-col${showFlipResult ? ' center-col--reveal-active' : ''}`}>
+          {isHotSeat && activeLocalId && currentTurn?.phase === 'place' && (
+            <div className="hotseat-banner" role="status" aria-live="polite" data-testid="hotseat-banner">
+              🎮 {viewerName}&apos;s turn
+            </div>
+          )}
           {isSpectator && (
             <div className="spectator-banner" role="status" aria-live="polite">
               <div className="spectator-banner__title">
@@ -1184,15 +1301,10 @@ export default function GameRoom({
               isInChallengePhase={isInChallengePhase}
               showPlacementToAll={watchingOther || isInChallengePhase}
               testId={watchingOther ? 'watch-timeline' : 'main-timeline'}
-              showHitsterUnderPlacement={
-                watchingOther &&
-                isInChallengePhase &&
-                !isSpectator &&
-                !isCooperative
-              }
+              showHitsterUnderPlacement={challengers.length > 0}
               challengeDeadline={challengeDeadline}
               onChallenge={handleChallenge}
-              hasChallenged={hasChallenged}
+              challengers={challengers}
               flipReveal={flipReveal}
             />
 
@@ -1200,7 +1312,7 @@ export default function GameRoom({
               <TimelineView
                 cards={myCards}
                 pendingCard={null}
-                label="YOUR TIMELINE — not your turn"
+                label={isHotSeat ? `${viewerName.toUpperCase()}'S TIMELINE — not your turn` : 'YOUR TIMELINE — not your turn'}
                 readOnly
                 placedPosition={null}
                 selectedPosition={null}
@@ -1228,7 +1340,7 @@ export default function GameRoom({
                 className="action-btn btn-skip-action"
                 data-testid="skip-btn"
                 disabled={myTokens < 1}
-                onClick={onSkipCard}
+                onClick={() => onSkipCard(sessionId)}
               >
                 SKIP (1🪙)
               </button>
@@ -1239,7 +1351,7 @@ export default function GameRoom({
                 className="action-btn btn-buy-action"
                 data-testid="buy-btn"
                 disabled={myTokens < 3}
-                onClick={onBuyCard}
+                onClick={() => onBuyCard(sessionId)}
                 title="Spend 3 tokens to place without hearing — your next turn will be skipped"
               >
                 BUY (3🪙)
@@ -1319,7 +1431,7 @@ export default function GameRoom({
                   }
                   onClick={() => {
                     const year = round?.config.mode === 'expert' ? Number(nameSongYear) : undefined;
-                    onNameSong(nameSongTitle.trim(), nameSongArtist.trim(), year);
+                    onNameSong(sessionId, nameSongTitle.trim(), nameSongArtist.trim(), year);
                     setNameSongTitle('');
                     setNameSongArtist('');
                     setNameSongYear('');

@@ -31,8 +31,10 @@ export default function App() {
       timelineLength={game.timelineLength}
       lastFlip={game.lastFlip}
       roundEnded={game.roundEnded}
-      myTokens={game.myTokens}
       sessionId={game.sessionId}
+      localPlayers={game.localPlayers}
+      onAddLocalPlayer={game.addLocalPlayer}
+      onRemoveLocalPlayer={game.removeLocalPlayer}
       socketError={game.socketError}
       onStartRound={game.startRound}
       onPlaceCard={game.placeCard}

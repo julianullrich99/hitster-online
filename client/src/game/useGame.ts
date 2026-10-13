@@ -1,11 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   socket,
+  createGameSocket,
   getPrimarySessionId,
   saveDisplayName,
   setPrimarySessionId,
+  type GameSocket,
 } from '../socket/client';
 import type { Room, Card, CardHidden, GameMode } from '../../../shared/types';
+
+/** Extra player sharing this device (hot-seat). Has its own socket and server identity. */
+export interface LocalPlayer {
+  id: string;
+  name: string;
+}
 
 export interface GameState {
   room: Room | null;
@@ -24,21 +32,24 @@ export interface GameState {
     challengeResults: Array<{ challengerId: string; outcome: 'stole_card' | 'lost_token' }>;
   } | null;
   roundEnded: { winnerId: string | null } | null;
-  myTokens: number;
   /** Server identity of this device's main player */
   sessionId: string;
+  localPlayers: LocalPlayer[];
   socketError: string | null;
   playlistPreviewCards: Card[] | null;
   playlistPreviewLoading: boolean;
   connectAndCreateRoom: (displayName: string, topic: string) => void;
   connectAndJoinRoom: (displayName: string, roomCode: string) => void;
+  addLocalPlayer: (name: string) => void;
+  removeLocalPlayer: (id: string) => void;
   leaveRoom: () => void;
   startRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => void;
-  placeCard: (position: number) => void;
-  challengeCard: () => void;
-  skipCard: () => void;
-  nameSong: (title: string, artist: string, year?: number) => void;
-  buyCard: () => void;
+  // Turn actions take the acting player's id (main player or a local hot-seat player)
+  placeCard: (actorId: string, position: number) => void;
+  challengeCard: (actorId: string) => void;
+  skipCard: (actorId: string) => void;
+  nameSong: (actorId: string, title: string, artist: string, year?: number) => void;
+  buyCard: (actorId: string) => void;
   dismissRoundEnd: () => void;
   createTeam: (name: string) => void;
   joinTeam: (teamId: string) => void;
@@ -79,16 +90,16 @@ export function useGame(): GameState {
   const [timelineLength, setTimelineLength] = useState(0);
   const [lastFlip, setLastFlip] = useState<GameState['lastFlip']>(null);
   const [roundEnded, setRoundEnded] = useState<{ winnerId: string | null } | null>(null);
-  const [myTokens, setMyTokens] = useState(0);
+  const [sessionId, setSessionId] = useState(getPrimarySessionId);
+  const [localPlayers, setLocalPlayers] = useState<LocalPlayer[]>([]);
   const [socketError, setSocketError] = useState<string | null>(null);
   const [playlistPreviewCards, setPlaylistPreviewCards] = useState<Card[] | null>(null);
   const [playlistPreviewLoading, setPlaylistPreviewLoading] = useState(false);
 
-  const [sessionId, setSessionId] = useState(getPrimarySessionId);
-
   // Room we are in — used to rejoin automatically after the socket reconnects
   // (phone screen lock, flaky Wi-Fi), otherwise the player would stay "offline".
   const roomCodeRef = useRef<string | null>(null);
+  const localSocketsRef = useRef(new Map<string, GameSocket>());
 
   useEffect(() => {
     const adoptIdentity = (id: string, code: string) => {
@@ -126,10 +137,6 @@ export function useGame(): GameState {
 
     socket.on('room:updated', (r) => {
       setRoom(r);
-      const tokenKey = r.activeRound?.config.mode === 'cooperative' ? 'cooperative' : sessionId;
-      if (r.activeRound?.tokens[tokenKey] !== undefined) {
-        setMyTokens(r.activeRound.tokens[tokenKey]);
-      }
     });
 
     socket.on('round:started', ({ room: r }) => {
@@ -143,10 +150,6 @@ export function useGame(): GameState {
       setTurnEndsAt(null);
       setLastFlip(null);
       setRoundEnded(null);
-      const tokenKey = r.activeRound?.config.mode === 'cooperative' ? 'cooperative' : sessionId;
-      if (r.activeRound?.tokens[tokenKey] !== undefined) {
-        setMyTokens(r.activeRound.tokens[tokenKey]);
-      }
     });
 
     socket.on('turn:started', ({ activePlayerId: pid, card, previewUrl: url, streamUrl: su, playAt: pa, serverNow, timelineLength: tl, turnEndsAt: te }) => {
@@ -259,15 +262,9 @@ export function useGame(): GameState {
           },
         };
       });
-      if (tokensUpdated[sessionId] !== undefined) {
-        setMyTokens(tokensUpdated[sessionId]);
-      }
     });
 
     socket.on('turn:bought', ({ tokensUpdated }) => {
-      if (tokensUpdated[sessionId] !== undefined) {
-        setMyTokens(tokensUpdated[sessionId]);
-      }
       setRoom((prev) => {
         if (!prev || !prev.activeRound) return prev;
         return { ...prev, activeRound: { ...prev.activeRound, tokens: tokensUpdated } };
@@ -275,9 +272,6 @@ export function useGame(): GameState {
     });
 
     socket.on('turn:named', ({ tokensUpdated }) => {
-      if (tokensUpdated[sessionId] !== undefined) {
-        setMyTokens(tokensUpdated[sessionId]);
-      }
       setRoom((prev) => {
         if (!prev || !prev.activeRound) return prev;
         return {
@@ -327,7 +321,7 @@ export function useGame(): GameState {
       socket.off('playlist:previewed');
       socket.off('error');
     };
-  }, [sessionId]);
+  }, []);
 
   const applySocketAuth = useCallback((displayName: string) => {
     saveDisplayName(displayName);
@@ -357,10 +351,58 @@ export function useGame(): GameState {
     ensureConnected(() => socket.emit('room:join', { roomCode: code }));
   }, [applySocketAuth, ensureConnected]);
 
+  /** Socket that acts for the given player — the main socket or a hot-seat player's socket. */
+  const socketFor = useCallback(
+    (actorId: string): GameSocket => localSocketsRef.current.get(actorId) ?? socket,
+    [],
+  );
+
+  const addLocalPlayer = useCallback((name: string) => {
+    const roomCode = roomCodeRef.current;
+    const displayName = name.trim();
+    if (!roomCode || !displayName) return;
+
+    const localSocket = createGameSocket({ sessionId: crypto.randomUUID(), displayName });
+    let joinedId: string | null = null;
+
+    localSocket.on('connect', () => {
+      if (roomCodeRef.current) localSocket.emit('room:join', { roomCode: roomCodeRef.current });
+    });
+    localSocket.on('room:joined', ({ sessionId: id }) => {
+      if (joinedId) return; // reconnect — identity unchanged
+      joinedId = id;
+      localSocket.auth = { sessionId: id, displayName };
+      localSocketsRef.current.set(id, localSocket);
+      setSocketError(null);
+      setLocalPlayers(prev => (prev.some(p => p.id === id) ? prev : [...prev, { id, name: displayName }]));
+    });
+    localSocket.on('error', (msg) => {
+      setSocketError(typeof msg === 'string' ? msg : 'An error occurred');
+      if (!joinedId) {
+        localSocket.removeAllListeners();
+        localSocket.disconnect();
+      }
+    });
+    localSocket.connect();
+  }, []);
+
+  const removeLocalPlayer = useCallback((id: string) => {
+    const localSocket = localSocketsRef.current.get(id);
+    if (!localSocket) return;
+    localSocket.emit('room:leave');
+    localSocketsRef.current.delete(id);
+    setLocalPlayers(prev => prev.filter(p => p.id !== id));
+    // Give the leave packet a moment to flush before closing the connection
+    setTimeout(() => {
+      localSocket.removeAllListeners();
+      localSocket.disconnect();
+    }, 300);
+  }, []);
+
   const leaveRoom = useCallback(() => {
     roomCodeRef.current = null;
     socket.emit('room:leave');
-    // Give the leave packet a moment to flush before the page reloads
+    for (const localSocket of localSocketsRef.current.values()) localSocket.emit('room:leave');
     setTimeout(() => window.location.reload(), 200);
   }, []);
 
@@ -368,25 +410,25 @@ export function useGame(): GameState {
     socket.emit('round:start', { mode, playlistLabel, cardsToWin, tokensEnabled });
   }, []);
 
-  const placeCard = useCallback((position: number) => {
-    socket.emit('turn:place', { position });
-  }, []);
+  const placeCard = useCallback((actorId: string, position: number) => {
+    socketFor(actorId).emit('turn:place', { position });
+  }, [socketFor]);
 
-  const challengeCard = useCallback(() => {
-    socket.emit('turn:challenge');
-  }, []);
+  const challengeCard = useCallback((actorId: string) => {
+    socketFor(actorId).emit('turn:challenge');
+  }, [socketFor]);
 
-  const skipCard = useCallback(() => {
-    socket.emit('turn:skip');
-  }, []);
+  const skipCard = useCallback((actorId: string) => {
+    socketFor(actorId).emit('turn:skip');
+  }, [socketFor]);
 
-  const nameSong = useCallback((title: string, artist: string, year?: number) => {
-    socket.emit('turn:name', { title, artist, year });
-  }, []);
+  const nameSong = useCallback((actorId: string, title: string, artist: string, year?: number) => {
+    socketFor(actorId).emit('turn:name', { title, artist, year });
+  }, [socketFor]);
 
-  const buyCard = useCallback(() => {
-    socket.emit('turn:buy');
-  }, []);
+  const buyCard = useCallback((actorId: string) => {
+    socketFor(actorId).emit('turn:buy');
+  }, [socketFor]);
 
   const dismissRoundEnd = useCallback(() => {
     setRoundEnded(null);
@@ -430,13 +472,15 @@ export function useGame(): GameState {
     timelineLength,
     lastFlip,
     roundEnded,
-    myTokens,
     sessionId,
+    localPlayers,
     socketError,
     playlistPreviewCards,
     playlistPreviewLoading,
     connectAndCreateRoom,
     connectAndJoinRoom,
+    addLocalPlayer,
+    removeLocalPlayer,
     leaveRoom,
     startRound,
     placeCard,

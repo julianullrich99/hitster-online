@@ -526,3 +526,36 @@ test('rejoining with the same name restores the player', async ({ browser }: { b
     await ctx3.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Hot-seat: two players on one device
+// ---------------------------------------------------------------------------
+
+test('hot-seat: local players join, take turns and can challenge on one screen', async ({ page }) => {
+  await fillName(page, 'Couch1');
+  await createRoom(page, 'Hot Seat');
+
+  await page.fill('[data-testid="local-player-name-input"]', 'Couch2');
+  await page.click('[data-testid="add-local-player-btn"]');
+  await expect(page.locator('[data-testid="local-player-row"]', { hasText: 'Couch2' })).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-testid="lobby-player"]')).toHaveCount(2);
+
+  await startRound(page);
+  await expect(page.locator('[data-testid="round-active"]')).toBeVisible({ timeout: 15_000 });
+
+  // Whoever is on turn, this screen can place for them
+  await expect(page.locator('[data-testid="hotseat-banner"]')).toBeVisible({ timeout: 10_000 });
+  const firstPlayer = (await page.locator('[data-testid="hotseat-banner"]').innerText()).includes('Couch1') ? 'Couch1' : 'Couch2';
+  const otherPlayer = firstPlayer === 'Couch1' ? 'Couch2' : 'Couch1';
+  await page.click('[data-testid="timeline-gap-0"]');
+  await page.click('button:has-text("CONFIRM PLACE")');
+
+  // The other local player gets a challenge button for this placement
+  const challenge = page.locator('[data-testid="challenge-btn"]', { hasText: otherPlayer });
+  await expect(challenge).toBeVisible({ timeout: 5_000 });
+  await challenge.click();
+  await expect(page.locator('[data-testid="challenge-btn"]', { hasText: `${otherPlayer} ✓` })).toBeVisible();
+
+  // Next turn passes to the other local player on the same screen
+  await expect(page.locator('[data-testid="hotseat-banner"]')).toContainText(otherPlayer, { timeout: 15_000 });
+});

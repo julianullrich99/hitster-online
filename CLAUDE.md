@@ -159,6 +159,7 @@ Each client schedules playback `playAt - serverNow` ms after receipt (never comp
 | Game log | Server-maintained `activeRound.gameLog`; client renders; survives late join. |
 | Leave room | Header **Leave** emits `room:leave` (removes the player between rounds, offline mid-round) and reloads to the entry page. |
 | Identity | Name only, unique per room. Joining with an offline player's name takes over that seat. |
+| Hot-seat | Extra players "on this device" (lobby). One socket per local player; the screen follows whoever is on turn. |
 | Token: skip | Spend 1 to discard current card, draw new one |
 | Token: buy | Spend 3 to place a card directly (before hearing song). Skip next turn. |
 | Token: earn | Name song title + artist correctly = +1 token (max 5) |
