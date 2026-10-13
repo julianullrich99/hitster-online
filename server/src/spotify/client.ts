@@ -439,9 +439,9 @@ export class SpotifyClient {
     for (const seed of seeds) {
       const q = encodeURIComponent(`genre:${seed}`);
       let nextPath: string | null =
-        `/search?q=${q}&type=track&limit=50&market=${encodeURIComponent(market)}`;
+        `/search?q=${q}&type=track&limit=10&market=${encodeURIComponent(market)}`;
 
-      for (let page = 0; page < 6 && nextPath && ranked.length < limit * 3; page++) {
+      for (let page = 0; page < 30 && nextPath && ranked.length < limit * 3; page++) {
         const data: SearchTracksPage = await this.apiGet<SearchTracksPage>(nextPath);
         const items: SpotifyTrack[] = data.tracks?.items ?? [];
 
@@ -508,7 +508,7 @@ export class SpotifyClient {
 
     const q = encodeURIComponent(genre);
     const data: SearchTracksPage = await this.apiGet<SearchTracksPage>(
-      `/search?q=${q}&type=track&limit=50`,
+      `/search?q=${q}&type=track&limit=10`,
     );
     const cards = await this.tracksToCards(data.tracks?.items ?? []);
     console.log(`[Spotify] keyword fallback "${genre}": ${cards.length} tracks included`);
