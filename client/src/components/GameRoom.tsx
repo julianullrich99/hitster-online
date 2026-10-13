@@ -12,6 +12,7 @@ import { PlaylistAutocomplete } from './PlaylistAutocomplete';
 import { TimelineView } from './TimelineView';
 import { renderGameLog } from '../game/gameLog';
 import { fetchEmbedPreviewStream, turnPlayableStream } from '../spotify';
+import { gameAudio } from '../audio/gameAudio';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -203,7 +204,9 @@ function PlayerList({
 
 // ── AudioPlayer ───────────────────────────────────────────────────────────────
 
-type PlaybackStatus = 'idle' | 'resolving' | 'playing' | 'unavailable';
+type PlaybackStatus = 'idle' | 'resolving' | 'loading' | 'playing' | 'blocked' | 'ended' | 'unavailable';
+
+const PREVIEW_SECONDS = 30;
 
 interface AudioPlayerProps {
   previewUrl: string | null;
@@ -224,11 +227,10 @@ function AudioPlayer({
   isFlipped,
   isActivePlayer,
 }: AudioPlayerProps) {
-  const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
   const waveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [timeLeft, setTimeLeft] = useState(30);
+  const retryPlayRef = useRef<(() => void) | null>(null);
+  const [timeLeft, setTimeLeft] = useState(PREVIEW_SECONDS);
   const [progress, setProgress] = useState(0);
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
 
@@ -256,48 +258,63 @@ function AudioPlayer({
     };
   }, []);
 
-  // Resolve MP3 (API streamUrl or embed HTML) and schedule synced playback at playAt
+  // Resolve MP3 (API streamUrl or embed HTML) and start synced playback at playAt.
+  // Uses the shared, gesture-unlocked element so timer-started play() isn't blocked.
   useEffect(() => {
     if (!previewUrl || !playAt || !currentCard) {
       setPlaybackStatus('idle');
       return;
     }
 
-    const audio = audioRef.current;
+    const audio = gameAudio;
     if (!audio) return;
 
     let cancelled = false;
     let playTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const startProgress = () => {
-      setTimeLeft(30);
-      setProgress(0);
-      let elapsed = 0;
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-      progressIntervalRef.current = setInterval(() => {
-        elapsed += 0.1;
-        const pct = Math.min((elapsed / 30) * 100, 100);
-        setProgress(pct);
-        setTimeLeft(Math.max(30 - elapsed, 0));
-        if (elapsed >= 30 && progressIntervalRef.current) {
-          clearInterval(progressIntervalRef.current);
-        }
-      }, 100);
+    const onPlaying = () => { if (!cancelled) setPlaybackStatus('playing'); };
+    const onEnded = () => { if (!cancelled) setPlaybackStatus('ended'); };
+    const onError = () => { if (!cancelled && audio.getAttribute('src')) setPlaybackStatus('unavailable'); };
+    const onTimeUpdate = () => {
+      if (cancelled) return;
+      const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : PREVIEW_SECONDS;
+      setProgress(Math.min((audio.currentTime / duration) * 100, 100));
+      setTimeLeft(Math.max(duration - audio.currentTime, 0));
+    };
+    audio.addEventListener('playing', onPlaying);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+
+    // Late start (slow resolve, tap-to-play): seek so every device hears the same moment
+    const syncPosition = () => {
+      const offset = (Date.now() - playAt) / 1000;
+      if (offset > 0.5 && offset < PREVIEW_SECONDS) {
+        try { audio.currentTime = offset; } catch { /* metadata not loaded yet */ }
+      }
     };
 
-    const schedulePlay = (url: string) => {
+    const tryPlay = () => {
       if (cancelled) return;
-      audio.src = url;
-      audio.load();
-      setPlaybackStatus('playing');
-      const delay = Math.max(0, playAt - Date.now());
-      playTimer = setTimeout(() => {
-        void audio.play().catch(() => {
-          if (!cancelled) setPlaybackStatus('unavailable');
-        });
-        startProgress();
-      }, delay);
+      retryPlayRef.current = null;
+      if (audio.readyState >= 1) syncPosition();
+      else audio.addEventListener('loadedmetadata', syncPosition, { once: true });
+      audio.play().catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === 'NotAllowedError') {
+          // Autoplay blocked — next tap anywhere (or the button) starts it
+          retryPlayRef.current = tryPlay;
+          setPlaybackStatus('blocked');
+        } else if (err instanceof DOMException && err.name === 'AbortError') {
+          // Superseded by a newer load — ignore
+        } else {
+          setPlaybackStatus('unavailable');
+        }
+      });
     };
+
+    const onGesture = () => { retryPlayRef.current?.(); };
+    window.addEventListener('pointerdown', onGesture);
 
     const run = async () => {
       let url = turnPlayableStream(previewUrl, streamUrl);
@@ -314,26 +331,37 @@ function AudioPlayer({
         setPlaybackStatus('unavailable');
         return;
       }
-      schedulePlay(url);
+      audio.src = url;
+      audio.load();
+      setPlaybackStatus('loading');
+      playTimer = setTimeout(tryPlay, Math.max(0, playAt - Date.now()));
     };
 
     void run();
 
     return () => {
       cancelled = true;
+      retryPlayRef.current = null;
       if (playTimer) clearTimeout(playTimer);
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+      window.removeEventListener('pointerdown', onGesture);
+      audio.removeEventListener('playing', onPlaying);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('loadedmetadata', syncPosition);
       audio.pause();
-      audio.src = '';
-      setTimeLeft(30);
+      audio.removeAttribute('src');
+      setTimeLeft(PREVIEW_SECONDS);
       setProgress(0);
       setPlaybackStatus('idle');
     };
   }, [previewUrl, streamUrl, playAt, currentCard?.trackId]);
 
   const statusMessage = (() => {
-    if (playbackStatus === 'resolving') return 'Loading preview…';
+    if (playbackStatus === 'resolving' || playbackStatus === 'loading') return 'Loading preview…';
     if (playbackStatus === 'unavailable') return 'Preview unavailable for this track.';
+    if (playbackStatus === 'blocked') return 'Your browser blocked autoplay.';
+    if (playbackStatus === 'ended') return 'Preview finished.';
     if (playbackStatus === 'playing') {
       return isActivePlayer ? 'Song is playing…' : 'Song is playing for all…';
     }
@@ -379,8 +407,18 @@ function AudioPlayer({
               </div>
             </>
           ) : (
-            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }} data-testid="now-playing-status">
+            <div className="now-playing-status" data-testid="now-playing-status">
               {statusMessage}
+              {playbackStatus === 'blocked' && (
+                <button
+                  type="button"
+                  className="tap-to-play-btn"
+                  onClick={() => retryPlayRef.current?.()}
+                  data-testid="tap-to-play-btn"
+                >
+                  ▶ Tap to play
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -399,7 +437,6 @@ function AudioPlayer({
       <div className="progress-track">
         <div className="progress-fill" style={{ width: `${progress}%` }} />
       </div>
-      <audio ref={audioRef} preload="auto" />
     </>
   );
 }

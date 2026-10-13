@@ -167,7 +167,9 @@ export interface ServerToClientEvents {
     previewUrl: string;
     /** 30s MP3 for in-browser playback (API preview_url and/or embed-resolved). */
     streamUrl: string | null;
-    playAt: number;        // Unix ms — start audio at exactly this time
+    playAt: number;        // Server Unix ms — start audio at this time (0 = don't play)
+    /** Server Date.now() when emitted — clients schedule playAt relative to this (clock skew). */
+    serverNow: number;
     timelineLength: number; // number of cards already on the active player's timeline
     /** Unix ms — auto-skip if still in place phase */
     turnEndsAt: number;

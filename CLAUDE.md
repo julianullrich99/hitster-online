@@ -136,9 +136,9 @@ Players are identified by a `sessionId` (UUID generated client-side on first vis
 ### 7. Audio playback sync
 When a turn starts, the server emits:
 ```ts
-{ event: 'turn:started', previewUrl: string, playAt: number } // playAt = Date.now() + 600
+{ event: 'turn:started', previewUrl: string, playAt: number, serverNow: number } // playAt = Date.now() + 600
 ```
-Each client uses `setTimeout` to start `<audio>.play()` at exactly `playAt`. Do not stream audio from the server.
+Each client schedules playback `playAt - serverNow` ms after receipt (never compare server time with the device clock — clocks drift by seconds). Playback goes through the shared, gesture-unlocked element in `client/src/audio/gameAudio.ts`. Do not stream audio from the server.
 
 ---
 

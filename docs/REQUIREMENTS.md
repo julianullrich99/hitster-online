@@ -121,8 +121,9 @@ Each turn has three phases:
 - Latency for game state updates should be imperceptible during normal play (<200ms).
 
 ### 2.2 Audio Synchronisation
-- The server sends `previewUrl` + `playAt` (Unix ms, ~600ms in the future) to all clients simultaneously.
-- Each client schedules `<audio>.play()` via `setTimeout` to fire at exactly `playAt`.
+- The server sends `previewUrl` + `playAt` (server Unix ms, ~600ms in the future) + `serverNow` to all clients simultaneously.
+- Each client converts to its own clock (`Date.now() + (playAt - serverNow)`) — device clocks are often off by seconds — and schedules `play()` via `setTimeout`.
+- Playback uses one shared audio element that is unlocked by the first user gesture (required by iOS Safari and other autoplay policies). If the browser still blocks playback, the player sees a **Tap to play** button; a late start seeks to the synced position.
 - Acceptable sync variance: ≤500ms between clients.
 
 ### 2.3 Spotify Integration

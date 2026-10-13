@@ -93,7 +93,7 @@ Presentational components. Receive state and callbacks as props. No game logic.
    ├─ engine.drawCard(deck)  →  { card: Card, hidden: CardHidden, remaining }
    ├─ liveDecks.set(roomCode, remaining)
    ├─ pendingCards.set(roomCode, card)
-   └─ io.emit('turn:started', { card: CardHidden, previewUrl, playAt, activePlayerId, ... })
+   └─ io.emit('turn:started', { card: CardHidden, previewUrl, playAt, serverNow, activePlayerId, ... })
 
 2. client receives 'turn:started'
    ├─ Active player: blurred album art only; title/artist/year hidden until flip

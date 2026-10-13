@@ -293,6 +293,7 @@ function buildTurnStartedPayload(
     previewUrl: hidden.previewUrl,
     streamUrl,
     playAt,
+    serverNow: Date.now(),
     timelineLength: engine.timelineLength(room, activeId),
     turnEndsAt,
   };

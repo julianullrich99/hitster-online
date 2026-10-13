@@ -128,12 +128,14 @@ export function useGame(): GameState {
       }
     });
 
-    socket.on('turn:started', ({ activePlayerId: pid, card, previewUrl: url, streamUrl: su, playAt: pa, timelineLength: tl, turnEndsAt: te }) => {
+    socket.on('turn:started', ({ activePlayerId: pid, card, previewUrl: url, streamUrl: su, playAt: pa, serverNow, timelineLength: tl, turnEndsAt: te }) => {
       setActivePlayerId(pid);
       setCurrentCard(card);
       setPreviewUrl(url);
       setStreamUrl(su ?? null);
-      setPlayAt(pa > Date.now() ? pa : null);
+      // Convert to the local clock: device clocks are often off by seconds, and comparing
+      // server time against Date.now() delayed or dropped playback entirely.
+      setPlayAt(pa > 0 ? Date.now() + Math.min(Math.max(0, pa - serverNow), 5_000) : null);
       setTurnEndsAt(te);
       setTimelineLength(tl);
       setLastFlip(null);
