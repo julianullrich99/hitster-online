@@ -2109,60 +2109,6 @@ body {
   animation: dotpulse 1.4s infinite;
 }
 
-
-.field-hint {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 6px;
-}
-
-.join-code-row {
-  display: flex;
-  gap: 8px;
-}
-.join-code-row .form-input {
-  font-family: 'Press Start 2P', monospace;
-  font-size: 13px;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  text-align: center;
-}
-.btn-join-code {
-  width: auto;
-  flex-shrink: 0;
-  margin-bottom: 0;
-  background: transparent;
-  border-color: #4ade80;
-  color: #4ade80;
-}
-
-
-.field-hint {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 6px;
-}
-
-.join-code-row {
-  display: flex;
-  gap: 8px;
-}
-.join-code-row .form-input {
-  font-family: 'Press Start 2P', monospace;
-  font-size: 13px;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  text-align: center;
-}
-.btn-join-code {
-  width: auto;
-  flex-shrink: 0;
-  margin-bottom: 0;
-  background: transparent;
-  border-color: #4ade80;
-  color: #4ade80;
-}
-
 .hotseat-banner {
   margin: 12px auto 0;
   padding: 10px 18px;
@@ -2189,4 +2135,255 @@ body {
 }
 .lobby-local-badge { font-size: 12px; }
 
+.field-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 6px;
+}
+
+.join-code-row {
+  display: flex;
+  gap: 8px;
+}
+.join-code-row .form-input {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 13px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-align: center;
+}
+.btn-join-code {
+  width: auto;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  background: transparent;
+  border-color: #4ade80;
+  color: #4ade80;
+}
+
+/* Timeline overflow: centre short tracks without clipping the start of long ones */
+.timeline-track { justify-content: flex-start; }
+.timeline-track > :first-child { margin-left: auto; }
+.timeline-track > :last-child { margin-right: auto; }
+
+.timeline-card-dock { touch-action: manipulation; }
+
+/* Lobby is taller than a phone screen — let it scroll */
+.lobby-screen {
+  min-height: 0;
+  overflow-y: auto;
+  justify-content: flex-start;
+}
+.lobby-screen > :first-child { margin-top: auto; }
+.lobby-screen > :last-child { margin-bottom: auto; }
+
+.game-root { height: 100vh; height: 100dvh; }
+.entry-root { min-height: 100vh; min-height: 100dvh; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Tablet / phone (≤ 900px): one scrolling column
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .entry-header,
+  .game-header {
+    padding: 8px 12px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .logo { font-size: 11px; }
+  .cursor-blink { width: 7px; height: 13px; }
+  .room-code-badge { font-size: 8px; padding: 5px 8px; }
+  .game-header-actions { gap: 8px; margin-left: auto; }
+  .token-panel-header { gap: 6px; }
+  .token-panel-label { font-size: 10px; }
+  .token-row { gap: 3px; }
+  .token-circle { width: 18px; height: 18px; font-size: 9px; }
+
+  .form-col { padding: 20px 16px 24px; border-right: none; border-bottom: 2px solid #1e1e3a; }
+  .rooms-col { padding: 16px 16px 32px; }
+  .hero-title { font-size: 18px; }
+
+  /* Game: page-style scrolling instead of three fixed columns */
+  .game-main {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .center-col { order: 1; overflow: visible; flex: 0 0 auto; }
+  .side-panel { order: 0; }
+  .right-side-panel { order: 2; }
+
+  /* Scoreboard strip */
+  .side-panel {
+    border-right: none;
+    border-bottom: 1px solid #1e1e3a;
+    padding: 8px 12px;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: stretch;
+    flex-shrink: 0;
+  }
+  .side-panel > .panel-title,
+  .side-panel .round-info .panel-title { display: none; }
+  .side-panel > div { flex-shrink: 0; }
+  .sidebar-turn-status { margin-bottom: 0; padding: 8px 10px; display: flex; align-items: center; }
+  .player-item { margin-bottom: 0; padding: 6px 8px; gap: 8px; min-width: 120px; }
+  .player-item.is-me.pinned { position: static; }
+  .player-avatar { width: 28px; height: 28px; font-size: 12px; }
+  .player-team-header { padding: 0 0 2px; border: none; }
+  .side-panel .round-info { margin: 0; padding: 0 4px; font-size: 12px; white-space: nowrap; align-self: center; }
+
+  .right-side-panel {
+    border-left: none;
+    border-top: 1px solid #1e1e3a;
+    padding: 12px 16px 24px;
+    overflow: visible;
+  }
+  .game-log { max-height: 220px; flex: 0 0 auto; min-height: 0; }
+
+  .now-playing { padding: 12px 16px; gap: 12px; }
+  .album-art-wrap { width: 56px; height: 56px; }
+  .song-title { font-size: 18px; }
+  .song-artist { font-size: 14px; }
+  .song-year { font-size: 18px; }
+  .song-timer { font-size: 16px; }
+  .waveform { height: 24px; padding: 0 16px; }
+
+  .timeline-section { padding: 16px 12px; flex: 0 0 auto; overflow: visible; }
+  .timeline-section.my-timeline-disabled,
+  .timeline-section[data-testid='my-timeline-disabled'] { padding: 8px 12px 12px; }
+  .center-timeline-stack { flex: 0 0 auto; }
+  .coop-token-warning { margin: 8px 16px 0; }
+
+  /* Action buttons stay reachable at the bottom of the screen */
+  .actions-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    padding: 10px 12px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    gap: 8px;
+  }
+  .actions-bar:empty { display: none; }
+  .action-btn { flex: 1 1 auto; min-height: 44px; padding: 10px 12px; font-size: 14px; }
+
+  .name-song-input { font-size: 16px; } /* ≥16px stops iOS zooming into the field */
+
+  .lobby-screen { padding: 20px 16px 32px; }
+  .lobby-topic { font-size: 18px; margin-bottom: 16px; }
+  .lobby-player-list { margin-bottom: 20px; gap: 8px; }
+  .lobby-player-chip { padding: 6px 10px; font-size: 14px; }
+  .lobby-team-btn { padding: 8px 12px; }
+  .lobby-start-btn { width: 100%; max-width: 480px; }
+
+  .win-screen { padding: 24px 16px; overflow-y: auto; justify-content: flex-start; }
+  .win-screen > .win-trophy { margin-top: auto; }
+  .win-screen > :last-child { margin-bottom: auto; }
+  .win-trophy { font-size: 56px; margin-bottom: 12px; }
+  .win-title { font-size: 16px; }
+  .win-history { min-width: 0; width: 100%; max-width: 420px; }
+
+  .modal-box { padding: 20px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Phone (≤ 640px): vertical timeline — oldest on top, gaps as full-width bars
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .timeline-track,
+  .timeline-track--watch {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    overflow-x: visible;
+    padding: 0;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .timeline-track > :first-child,
+  .timeline-track > :last-child { margin-left: 0; margin-right: 0; }
+  .timeline-slot,
+  .timeline-watch-slot,
+  .timeline-gap-slot,
+  .timeline-placement-column {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+  }
+  .timeline-watch-slot:empty { display: none; }
+
+  .drop-zone { width: 100%; min-width: 0; height: 40px; }
+  .drop-zone-placeholder { font-size: 12px; }
+  .timeline-section.timeline-readonly .drop-zone { display: none; }
+
+  .timeline-card,
+  .timeline-card.placed-card {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 56px;
+    padding: 6px 10px;
+    display: grid;
+    grid-template-columns: 52px 44px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 10px;
+    row-gap: 0;
+    align-items: center;
+    text-align: left;
+  }
+  .card-year { grid-row: 1 / 3; grid-column: 1; font-size: 11px; }
+  .card-art { grid-row: 1 / 3; grid-column: 2; width: 44px; height: 44px; }
+  .card-title { grid-column: 3; grid-row: 1; font-size: 14px; -webkit-line-clamp: 1; }
+  .card-artist { grid-column: 3; grid-row: 2; font-size: 12px; color: #a78bfa; -webkit-line-clamp: 1; }
+
+  .timeline-card.face-down {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 12px;
+  }
+  .face-down-symbol { font-size: 16px; }
+
+  .timeline-challenge-panel { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; }
+  .timeline-challenge-panel .timeline-challenge-timer { width: auto; align-self: center; }
+  .btn-challenge-timeline { width: auto; flex: 1 1 120px; min-height: 44px; }
+
+  .timeline-pending-below { padding-top: 0; }
+  .timeline-card-dock { width: 100%; max-width: 420px; margin: 0 auto; }
+  .timeline-card-dock-label { max-width: none; font-size: 11px; }
+  .timeline-section.my-timeline-disabled .timeline-track,
+  .timeline-section[data-testid='my-timeline-disabled'] .timeline-track { transform: none; }
+
+  .flip-reveal-slot { padding-top: 26px; }
+  .flip-reveal-ring { inset: 22px -4px -4px -4px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Big screens / TV (≥ 1600px): larger cards and text for couch play
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 1600px) {
+  .game-main { grid-template-columns: 300px 1fr 300px; }
+  .timeline-card { width: 140px; min-width: 140px; height: 196px; }
+  .card-art { height: 84px; }
+  .card-year { font-size: 12px; }
+  .card-title, .card-artist { font-size: 13px; }
+  .drop-zone { width: 56px; min-width: 56px; height: 196px; }
+  .timeline-placement-column, .timeline-challenge-panel { width: 140px; }
+  .btn-challenge-timeline { width: 140px; font-size: 16px; }
+  .timeline-label { font-size: 10px; }
+  .album-art-wrap { width: 110px; height: 110px; }
+  .song-title { font-size: 30px; }
+  .song-artist { font-size: 22px; }
+  .action-btn { font-size: 18px; padding: 14px 28px; }
+  .player-name { font-size: 17px; }
+  .log-entry { font-size: 14px; }
+  .hotseat-banner { font-size: 14px; }
+}
 .lobby-team-row .lobby-team-btn:last-child { margin-left: auto; }

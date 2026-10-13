@@ -2,8 +2,13 @@ import { useState, useEffect } from 'react';
 import {
   DndContext,
   DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
   useDraggable,
   useDroppable,
+  useSensor,
+  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import type { Card, CardHidden } from '../../../shared/types';
@@ -75,7 +80,7 @@ function DraggablePendingCard() {
       {...attributes}
     >
       <FaceDownCard />
-      <div className="timeline-card-dock-label">Drag into a gap above</div>
+      <div className="timeline-card-dock-label">Drag into a gap — or tap a gap</div>
     </div>
   );
 }
@@ -256,6 +261,12 @@ export function TimelineView({
   }, [challengeDeadline, showHitsterUnderPlacement]);
 
   const [activeDrag, setActiveDrag] = useState(false);
+  // Touch: short hold starts a drag so a quick tap still selects a gap and the page scrolls
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDrag(false);
@@ -365,6 +376,7 @@ export function TimelineView({
       <div className={sectionClass} data-testid={testId}>
         <div className="timeline-label">{label}</div>
         <DndContext
+          sensors={sensors}
           onDragStart={() => setActiveDrag(true)}
           onDragEnd={handleDragEnd}
           onDragCancel={() => setActiveDrag(false)}

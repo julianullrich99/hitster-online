@@ -61,6 +61,11 @@ _What the system does from a player's perspective. No technical detail._
 - During the challenge window, each local player who is not placing gets their own **challenge** button.
 - Hidden information (blurred album art for the active player) is not meaningful on a shared screen and is accepted as such.
 
+### 1.3.2 Devices & Layout
+- The UI is responsive: desktop/TV (three columns, larger cards on ≥1600px), tablet and phone (single scrolling column, scoreboard strip, sticky action bar).
+- On phones (≤640px) the timeline is vertical — oldest at the top, gaps as full-width bars.
+- Cards can be placed by drag & drop or by **tapping a gap** and confirming.
+
 ### 1.4 Round Configuration
 Before each round, the room owner sets:
 
