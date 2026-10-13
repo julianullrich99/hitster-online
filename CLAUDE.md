@@ -129,8 +129,8 @@ Players are identified by a `sessionId` (UUID generated client-side on first vis
 ### 6. Spotify integration
 - Use **Client Credentials Flow** only. Never use Authorization Code Flow.
 - The token is fetched server-side and refreshed automatically before expiry.
-- Fetch preview URLs from `track.preview_url` on the Spotify track object.
-- Tracks with `preview_url === null` must be flagged — do not silently include them in the deck.
+- The app is in Spotify development mode (tiny request quota, many endpoints blocked). Read track data from the public embed pages where possible and keep Web API calls rare and cached — see `docs/REQUIREMENTS.md` §2.3. Test against the live API sparingly: exhausting the quota blocks the app (incl. production) for hours.
+- Preview MP3s come from `track.preview_url` or, when null, the embed page; tracks without any preview resolve per turn and show "Preview unavailable".
 - Never expose `SPOTIFY_CLIENT_ID` or `SPOTIFY_CLIENT_SECRET` to the client.
 
 ### 7. Audio playback sync

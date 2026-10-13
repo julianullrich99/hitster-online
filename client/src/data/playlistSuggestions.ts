@@ -1,8 +1,19 @@
 /** Default genre / playlist label for the lobby field. */
 export const DEFAULT_PLAYLIST_LABEL = "90's Rock";
 
-/** Popular genre and theme labels for Spotify search / playlist preview (100 items). */
+/** Popular genre and theme labels for Spotify search / playlist preview */
 export const PLAYLIST_SUGGESTIONS: readonly string[] = [
+  // Plain decades: curated Spotify "All Out" playlists, work even when the API quota is used up
+  "50s",
+  "60s",
+  "70s",
+  "80s",
+  "90s",
+  "2000s",
+  "2010s",
+  "Schlager",
+  "Neue Deutsche Welle",
+  "Deutschrap",
   "90's Rock",
   "80's Pop",
   "70's Disco",

@@ -58,7 +58,7 @@ Appends structured lines to `activeRound.gameLog` (placements, challenges, flips
 Thin wrapper around `Map<string, Room>`. Provides `get`, `set`, `delete`, `getAll`, `getSummaries`. No logic beyond storage and projection to `RoomSummary`.
 
 ### `server/src/spotify/client.ts`
-Handles Spotify Client Credentials auth (auto-refreshes token before expiry) and track fetching. Returns typed `Card[]`. Tracks with `preview_url === null` are filtered out and the count is logged. `TEST_MODE=true` substitutes mock tracks from `mockTracks.ts` so tests run without credentials.
+Handles Spotify Client Credentials auth (auto-refreshes token before expiry) and deck building. Returns typed `Card[]`. Because the app is in Spotify development mode, track data mostly comes from the public embed pages (`embedPreview.ts`) and the Web API is only used sparingly (playlist search, year search, original-year lookups) behind a TTL cache and a quota circuit breaker — see REQUIREMENTS §2.3. Label parsing and title cleanup live in `labels.ts` (pure). `TEST_MODE=true` substitutes mock tracks from `mockTracks.ts` so tests run without credentials.
 
 ### `server/src/index.ts`
 The orchestration layer. Owns all timers, the Socket.io server, and the live-data Maps that cannot live in `Room` (decks, pending cards, challenge lists). Translates Socket.io events into calls to `engine.*` and broadcasts results.

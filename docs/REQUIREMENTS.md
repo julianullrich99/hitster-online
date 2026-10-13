@@ -127,8 +127,15 @@ Each turn has three phases:
 
 ### 2.3 Spotify Integration
 - Server authenticates with Spotify via **Client Credentials Flow** (no user login).
-- Given a playlist URL or genre label, server retrieves tracks including title, artist(s), release year, album art URL, and `preview_url`.
-- Tracks with `preview_url = null` are excluded from the deck; a warning is logged server-side with the count.
+- The app runs in Spotify **development mode**: no `/recommendations`, no playlist contents via the API, no batch endpoints, search `limit` ≤ 10, no popularity/genres, and a small request quota (exceeding it blocks the app for hours).
+- Deck sources (all return title, artist(s), release year, album art and — via the embed page — the 30s preview MP3):
+  - **Decade** label (`80s`, `80er`, `1990s`, `1975-1985`, `1985`): Spotify's editorial "All Out 50s…2010s" playlists, read from the public embed pages — no API quota. API `year:` search fills gaps (e.g. 2020s).
+  - **No label**: hits spread evenly across the 1960s–2020s, same sources.
+  - **Genre/topic** (`Schlager`, `90s Hip Hop`): API playlist search (cached 24h), best-matching curated playlist read via embed; a decade in the label filters the tracks.
+  - **Playlist URL**: read via its embed page (max. 100 tracks).
+  - The `genre:` search filter is not used — it returns mostly obscure tracks.
+- Release years must be the song's year: tracks outside a requested decade are dropped; without a decade, remasters/compilations get their earliest release year via search (capped per deck) or are dropped. Version suffixes (" - 2013 Remaster", "(Original Single Mix)") are removed from titles.
+- API responses and embed data are cached in memory. On a quota 429 the server stops calling the API until Retry-After; on embed 429 it uses cached data only for 10 minutes.
 
 ### 2.4 Audio Playback
 - The `preview_url` is a publicly accessible 30-second MP3 on Spotify's CDN.

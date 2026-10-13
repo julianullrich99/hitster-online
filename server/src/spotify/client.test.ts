@@ -3,46 +3,137 @@ import { SpotifyClient, createSpotifyClient } from './client';
 const mockFetch = jest.fn();
 global.fetch = mockFetch as typeof fetch;
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── fake Spotify ─────────────────────────────────────────────────────────────
+// Routes requests by URL so parallel lookups don't depend on call order.
 
-function tokenOk(expiresIn = 3600) {
-  return { ok: true, json: async () => ({ access_token: 'tok', expires_in: expiresIn }) };
+const ALL_OUT_80S = '37i9dQZF1DX4UtSsGT1Sbe';
+
+interface FakeTrack {
+  id: string;
+  title: string;
+  artist: string;
+  date: string;
 }
 
-function apiOk(body: unknown) {
-  return { ok: true, json: async () => body };
+/** Spotify-shaped 22-char playlist id */
+function pid(name: string): string {
+  return name.padEnd(22, '0');
 }
 
-function apiFail(status: number, statusText = 'Error') {
-  return { ok: false, status, statusText };
+function trackId(n: number): string {
+  return `t${String(n).padStart(21, '0')}`;
 }
 
-function makeTrack(
-  overrides: Partial<{
-    id: string;
-    name: string;
-    artists: { name: string }[];
-    preview_url: string | null;
-    popularity: number;
-    external_urls: { spotify: string };
-    release_date: string;
-    images: { url: string; width: number; height: number }[];
-  }> = {},
-) {
-  const id = overrides.id ?? 'track1';
+function nextData(entity: unknown): string {
+  return `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
+    props: { pageProps: { state: { data: { entity } } } },
+  })}</script></html>`;
+}
+
+function playlistEmbedHtml(tracks: FakeTrack[]): string {
+  return nextData({
+    trackList: tracks.map(t => ({
+      uri: `spotify:track:${t.id}`,
+      title: t.title,
+      subtitle: t.artist,
+      audioPreview: { url: `https://p.scdn.co/mp3-preview/${t.id}` },
+    })),
+  });
+}
+
+function trackEmbedHtml(t: FakeTrack): string {
+  return nextData({
+    id: t.id,
+    name: t.title,
+    artists: [{ name: t.artist }],
+    releaseDate: { isoString: `${t.date}T00:00:00Z` },
+    audioPreview: { url: `https://p.scdn.co/mp3-preview/${t.id}` },
+    visualIdentity: { image: [{ url: `https://img/${t.id}-64`, maxWidth: 64 }, { url: `https://img/${t.id}-640`, maxWidth: 640 }] },
+  });
+}
+
+function html(body: string, status = 200) {
+  return { ok: status < 400, status, text: async () => body, headers: { get: () => null } };
+}
+
+function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return {
-    id,
-    name: overrides.name ?? 'Song Title',
-    artists: overrides.artists ?? [{ name: 'Artist' }],
-    preview_url: overrides.preview_url !== undefined ? overrides.preview_url : 'https://p.scdn.co/preview.mp3',
-    popularity: overrides.popularity ?? 80,
-    external_urls: overrides.external_urls ?? { spotify: `https://open.spotify.com/track/${id}` },
-    album: {
-      images: overrides.images ?? [{ url: 'https://img.example.com/art.jpg', width: 640, height: 640 }],
-      release_date: overrides.release_date ?? '1995-06-15',
-      release_date_precision: 'day' as const,
-    },
+    ok: status < 400,
+    status,
+    statusText: 'x',
+    json: async () => body,
+    headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
   };
+}
+
+function apiTrack(t: FakeTrack, albumName = 'Album') {
+  return {
+    id: t.id,
+    name: t.title,
+    artists: [{ id: 'a', name: t.artist }],
+    preview_url: null,
+    album: { name: albumName, album_type: 'album', images: [], release_date: t.date },
+  };
+}
+
+interface FakeSpotify {
+  playlists: Record<string, FakeTrack[]>;
+  /** /search?type=playlist results */
+  playlistSearch?: Array<{ id: string; name: string; total: number }>;
+  /** /search?type=track results keyed by a substring of the decoded query */
+  trackSearch?: Record<string, FakeTrack[]>;
+  apiStatus?: number;
+  apiHeaders?: Record<string, string>;
+  embedStatus?: number;
+}
+
+function installFakeSpotify(fake: FakeSpotify) {
+  const tracks = new Map<string, FakeTrack>();
+  for (const list of Object.values(fake.playlists)) for (const t of list) tracks.set(t.id, t);
+
+  mockFetch.mockImplementation(async (url: string) => {
+    if (url === 'https://accounts.spotify.com/api/token') {
+      return json({ access_token: 'tok', expires_in: 3600 });
+    }
+    const embedPlaylist = url.match(/open\.spotify\.com\/embed\/playlist\/(\w+)/);
+    if (embedPlaylist) {
+      if (fake.embedStatus) return html('', fake.embedStatus);
+      return html(playlistEmbedHtml(fake.playlists[embedPlaylist[1]] ?? []));
+    }
+    const embedTrack = url.match(/open\.spotify\.com\/embed\/track\/(\w+)/);
+    if (embedTrack) {
+      if (fake.embedStatus) return html('', fake.embedStatus);
+      const t = tracks.get(embedTrack[1]);
+      return t ? html(trackEmbedHtml(t)) : html('', 404);
+    }
+    if (url.startsWith('https://api.spotify.com/v1/search')) {
+      if (fake.apiStatus) return json({}, fake.apiStatus, fake.apiHeaders);
+      const q = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+      if (url.includes('type=playlist')) {
+        return json({
+          playlists: {
+            items: (fake.playlistSearch ?? []).map(p => ({ id: p.id, name: p.name, items: { total: p.total } })),
+          },
+        });
+      }
+      const hit = Object.entries(fake.trackSearch ?? {}).find(([needle]) => q.includes(needle));
+      return json({ tracks: { items: (hit?.[1] ?? []).map(t => apiTrack(t)) } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
+function decade(from: number, count: number, offset = 0): FakeTrack[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: trackId(offset + i),
+    title: `Song ${offset + i}`,
+    artist: `Artist ${offset + i}`,
+    date: `${from + (i % 10)}-05-01`,
+  }));
+}
+
+function apiCalls(): string[] {
+  return mockFetch.mock.calls.map(([u]) => u as string).filter(u => u.startsWith('https://api.spotify.com'));
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
@@ -53,20 +144,24 @@ describe('SpotifyClient', () => {
   beforeEach(() => {
     mockFetch.mockReset();
     client = new SpotifyClient('test-id', 'test-secret');
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
+
+  afterEach(() => jest.restoreAllMocks());
 
   // ── token management ────────────────────────────────────────────────────────
 
   describe('token management', () => {
-    it('fetches an access token with Client Credentials', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiOk({ items: [], next: null }));
+    it('fetches an access token with Client Credentials and reuses it', async () => {
+      installFakeSpotify({ playlists: {}, playlistSearch: [] });
 
-      await client.getPlaylistTracks('37i9dQZF1DXcBWIGoYBM5M');
+      await client.searchPlaylists('rock');
+      await client.searchPlaylists('jazz');
 
-      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('https://accounts.spotify.com/api/token');
+      const tokenCalls = mockFetch.mock.calls.filter(([url]) => url === 'https://accounts.spotify.com/api/token');
+      expect(tokenCalls).toHaveLength(1);
+      const init = tokenCalls[0][1] as RequestInit;
       expect(init.method).toBe('POST');
       expect(init.body).toBe('grant_type=client_credentials');
       expect((init.headers as Record<string, string>).Authorization).toBe(
@@ -74,286 +169,137 @@ describe('SpotifyClient', () => {
       );
     });
 
-    it('reuses a cached token on the second call', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiOk({ items: [], next: null }))
-        .mockResolvedValueOnce(apiOk({ items: [], next: null }));
-
-      await client.getPlaylistTracks('abc123');
-      await client.getPlaylistTracks('abc123');
-
-      const tokenCalls = mockFetch.mock.calls.filter(
-        ([url]: [string]) => url === 'https://accounts.spotify.com/api/token',
-      );
-      expect(tokenCalls).toHaveLength(1);
-    });
-
-    it('re-fetches the token when it is about to expire', async () => {
-      // First call — token valid for only 20s (< 30s buffer → will re-fetch immediately)
-      mockFetch
-        .mockResolvedValueOnce(tokenOk(20))
-        .mockResolvedValueOnce(apiOk({ items: [], next: null }))
-        .mockResolvedValueOnce(tokenOk(3600))
-        .mockResolvedValueOnce(apiOk({ items: [], next: null }));
-
-      await client.getPlaylistTracks('abc123');
-      await client.getPlaylistTracks('abc123');
-
-      const tokenCalls = mockFetch.mock.calls.filter(
-        ([url]: [string]) => url === 'https://accounts.spotify.com/api/token',
-      );
-      expect(tokenCalls).toHaveLength(2);
-    });
-
     it('throws when the token request fails', async () => {
-      mockFetch.mockResolvedValueOnce(apiFail(401, 'Unauthorized'));
-      await expect(client.getPlaylistTracks('abc')).rejects.toThrow(
-        'Spotify token request failed: 401',
-      );
+      mockFetch.mockResolvedValueOnce(json({}, 401));
+      await expect(client.searchPlaylists('rock')).rejects.toThrow('Spotify token request failed: 401');
     });
   });
 
-  // ── getPlaylistTracks ───────────────────────────────────────────────────────
+  // ── decade decks ───────────────────────────────────────────────────────────
 
-  describe('getPlaylistTracks', () => {
-    it('returns a Card for a track with a preview URL', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiOk({ items: [{ track: makeTrack() }], next: null }));
+  describe('decade labels', () => {
+    it('builds "80s" from the All Out 80s playlist via embed pages, without the Web API', async () => {
+      installFakeSpotify({ playlists: { [ALL_OUT_80S]: decade(1980, 80) } });
 
-      const cards = await client.getPlaylistTracks('https://open.spotify.com/playlist/abc123');
+      const cards = await client.getTracksForLabel('80s');
 
-      expect(cards).toHaveLength(1);
-      expect(cards[0]).toEqual({
-        trackId: 'track1',
-        title: 'Song Title',
-        artist: 'Artist',
-        releaseYear: 1995,
-        previewUrl: 'https://open.spotify.com/track/track1',
-        streamUrl: 'https://p.scdn.co/preview.mp3',
-        albumArt: 'https://img.example.com/art.jpg',
+      expect(cards.length).toBeGreaterThanOrEqual(50);
+      expect(cards.every(c => c.releaseYear >= 1980 && c.releaseYear <= 1989)).toBe(true);
+      expect(cards[0].streamUrl).toMatch(/^https:\/\/p\.scdn\.co\/mp3-preview\//);
+      expect(cards[0].albumArt).toMatch(/-640$/);
+      expect(apiCalls()).toHaveLength(0);
+    });
+
+    it('drops tracks dated outside the decade (re-releases)', async () => {
+      const tracks = decade(1980, 20);
+      tracks[0] = { ...tracks[0], title: 'Dreams - 2004 Remaster', date: '2004-01-01' };
+      installFakeSpotify({ playlists: { [ALL_OUT_80S]: tracks } });
+
+      const cards = await client.getTracksForLabel('80er');
+
+      expect(cards.find(c => c.trackId === tracks[0].id)).toBeUndefined();
+      expect(cards).toHaveLength(19);
+    });
+  });
+
+  // ── playlist links ─────────────────────────────────────────────────────────
+
+  describe('playlist URLs', () => {
+    it('reads the playlist from its embed page and cleans version suffixes from titles', async () => {
+      const tracks = decade(1990, 10, 100);
+      tracks[0] = { ...tracks[0], title: 'Wonderwall - Remastered' };
+      installFakeSpotify({ playlists: { [pid('PL1')]: tracks } });
+
+      const cards = await client.getTracksForLabel(`https://open.spotify.com/playlist/${pid('PL1')}?si=x`);
+
+      expect(cards.map(c => c.title)).not.toContain('Wonderwall - Remastered');
+      expect(apiCalls().every(u => !u.includes('/playlists/'))).toBe(true);
+    });
+
+    it('looks up the original year of a remaster when no decade bounds the deck', async () => {
+      const remaster = { id: trackId(500), title: 'Hotel California - 2013 Remaster', artist: 'Eagles', date: '2013-04-26' };
+      installFakeSpotify({
+        playlists: { [pid('PL2')]: [remaster, ...decade(1970, 9, 501)] },
+        trackSearch: {
+          'track:"Hotel California"': [
+            { ...remaster, date: '2013-04-26' },
+            { ...remaster, id: trackId(599), date: '1976-12-08' },
+          ],
+        },
       });
-    });
 
-    it('uses Spotify play URL instead of preview_url MP3', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(
-          apiOk({
-            items: [
-              { track: makeTrack({ id: 'no-preview', preview_url: null }) },
-              { track: makeTrack({ id: 'track2', preview_url: 'https://p.scdn.co/2.mp3' }) },
-            ],
-            next: null,
-          }),
-        );
+      const cards = await client.getTracksForLabel(`https://open.spotify.com/playlist/${pid('PL2')}`);
+      const card = cards.find(c => c.trackId === remaster.id);
 
-      const cards = await client.getPlaylistTracks('abc123');
-      expect(cards).toHaveLength(2);
-      expect(cards[0].previewUrl).toBe('https://open.spotify.com/track/no-preview');
-      expect(cards[1].previewUrl).toBe('https://open.spotify.com/track/track2');
-    });
-
-    it('filters out null track items', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(
-          apiOk({ items: [{ track: null }, { track: makeTrack() }], next: null }),
-        );
-
-      const cards = await client.getPlaylistTracks('abc123');
-      expect(cards).toHaveLength(1);
-    });
-
-    it('paginates through multiple pages', async () => {
-      const page1 = Array.from({ length: 3 }, (_, i) => ({
-        track: makeTrack({ id: `t${i}` }),
-      }));
-      const page2 = Array.from({ length: 2 }, (_, i) => ({
-        track: makeTrack({ id: `t${i + 3}` }),
-      }));
-
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(
-          apiOk({
-            items: page1,
-            next: 'https://api.spotify.com/v1/playlists/abc/tracks?offset=50',
-          }),
-        )
-        .mockResolvedValueOnce(apiOk({ items: page2, next: null }));
-
-      const cards = await client.getPlaylistTracks('abc123');
-      expect(cards).toHaveLength(5);
-    });
-
-    it('extracts the playlist ID from a full Spotify URL', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiOk({ items: [], next: null }));
-
-      await client.getPlaylistTracks(
-        'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=xyz',
-      );
-
-      const apiCall = mockFetch.mock.calls[1] as [string];
-      expect(apiCall[0]).toContain('/playlists/37i9dQZF1DXcBWIGoYBM5M/tracks');
-    });
-
-    it('throws for an unrecognisable playlist URL', async () => {
-      // extractPlaylistId throws before any network call — no fetch mock needed
-      await expect(client.getPlaylistTracks('not-a-url!!!')).rejects.toThrow(
-        'Cannot extract playlist ID',
-      );
-    });
-
-    it('handles a year-only release_date', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(
-          apiOk({ items: [{ track: makeTrack({ release_date: '1983' }) }], next: null }),
-        );
-
-      const cards = await client.getPlaylistTracks('abc');
-      expect(cards[0].releaseYear).toBe(1983);
-    });
-
-    it('joins multiple artists with a comma', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(
-          apiOk({
-            items: [{ track: makeTrack({ artists: [{ name: 'A' }, { name: 'B' }] }) }],
-            next: null,
-          }),
-        );
-
-      const cards = await client.getPlaylistTracks('abc');
-      expect(cards[0].artist).toBe('A, B');
-    });
-
-    it('uses the largest album image as albumArt', async () => {
-      const images = [
-        { url: 'https://img.example.com/640.jpg', width: 640, height: 640 },
-        { url: 'https://img.example.com/300.jpg', width: 300, height: 300 },
-      ];
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(
-          apiOk({ items: [{ track: makeTrack({ images }) }], next: null }),
-        );
-
-      const cards = await client.getPlaylistTracks('abc');
-      expect(cards[0].albumArt).toBe('https://img.example.com/640.jpg');
-    });
-
-    it('throws when the playlist API call fails', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiFail(404, 'Not Found'));
-
-      await expect(client.getPlaylistTracks('badid')).rejects.toThrow('Spotify API error 404');
+      expect(card?.releaseYear).toBe(1976);
+      expect(card?.title).toBe('Hotel California');
     });
   });
 
-  // ── getGenreTracks ──────────────────────────────────────────────────────────
+  // ── genre / topic labels ───────────────────────────────────────────────────
 
-  describe('getRecommendationsForGenre', () => {
-    it('returns cards from the recommendations endpoint', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiOk({ tracks: [makeTrack({ id: 'g1' })] }));
+  describe('topic labels', () => {
+    it('uses the best-matching playlist from playlist search', async () => {
+      installFakeSpotify({
+        playlists: { [pid('GOOD')]: decade(1990, 40, 200), [pid('MIX')]: decade(2020, 40, 300) },
+        playlistSearch: [
+          { id: pid('MIX'), name: 'Schlager Party Mix 2026', total: 100 },
+          { id: pid('GOOD'), name: 'Die größten Schlager Hits', total: 120 },
+        ],
+      });
 
-      const cards = await client.getRecommendationsForGenre('pop');
-      expect(cards).toHaveLength(1);
-      expect(cards[0].trackId).toBe('g1');
+      const cards = await client.getTracksForLabel('Schlager');
+
+      expect(cards.length).toBeGreaterThan(0);
+      expect(cards.every(c => c.releaseYear < 2000)).toBe(true);
     });
 
-    it('calls recommendations with seed_genres and min_popularity', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiOk({ tracks: [] }));
+    it('applies the decade from "90s hip hop" to playlist tracks', async () => {
+      installFakeSpotify({
+        playlists: { [pid('HH')]: [...decade(1990, 30, 400), ...decade(2010, 30, 430)] },
+        playlistSearch: [{ id: pid('HH'), name: '90s Hip Hop Hits', total: 60 }],
+      });
 
-      await client.getRecommendationsForGenre("90's Rock");
+      const cards = await client.getTracksForLabel('90s hip hop');
 
-      const [url] = mockFetch.mock.calls[1] as [string];
-      expect(url).toContain('/recommendations?');
-      expect(url).toContain('seed_genres=rock');
-      expect(url).toContain('min_popularity=70');
-      expect(url).toContain('market=US');
-      expect(url).toContain('limit=100');
-    });
-
-    it('uses Spotify play URL instead of preview_url MP3', async () => {
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(
-          apiOk({
-            tracks: [
-              makeTrack({ id: 'g1', preview_url: null }),
-              makeTrack({ id: 'g2', preview_url: 'https://p.scdn.co/g2.mp3' }),
-            ],
-          }),
-        );
-
-      const cards = await client.getRecommendationsForGenre('rock');
-      expect(cards).toHaveLength(2);
-      expect(cards[0].previewUrl).toBe('https://open.spotify.com/track/g1');
-      expect(cards[1].previewUrl).toBe('https://open.spotify.com/track/g2');
+      expect(cards.length).toBeGreaterThanOrEqual(20);
+      expect(cards.every(c => c.releaseYear >= 1990 && c.releaseYear <= 1999)).toBe(true);
     });
   });
 
-  describe('getGenreTracks', () => {
+  // ── quota / throttling ─────────────────────────────────────────────────────
 
-    it('caps recommendations at 100 tracks per request', async () => {
-      const tracks = Array.from({ length: 100 }, (_, i) => makeTrack({ id: `g${i}` }));
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiOk({ tracks }));
+  describe('rate limits', () => {
+    it('stops calling the API after a quota 429 and explains it for topic labels', async () => {
+      installFakeSpotify({ playlists: {}, apiStatus: 429, apiHeaders: { 'retry-after': '36000' } });
 
-      const cards = await client.getGenreTracks('jazz', 200);
-      expect(cards).toHaveLength(100);
-      const [url] = mockFetch.mock.calls[1] as [string];
-      expect(url).toContain('limit=100');
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      await expect(client.getTracksForLabel('Schlager')).rejects.toThrow(/temporarily unavailable/);
+      const callsAfterFirst = apiCalls().length;
+      await expect(client.getTracksForLabel('Rock')).rejects.toThrow(/temporarily unavailable/);
+
+      expect(client.isApiBlocked()).toBe(true);
+      expect(apiCalls()).toHaveLength(callsAfterFirst);
     });
 
-    it('falls back to popularity-ranked search when recommendations return 404', async () => {
-      const popular = Array.from({ length: 12 }, (_, i) =>
-        makeTrack({ id: `hit${i}`, popularity: 90 - i }),
-      );
-      mockFetch
-        .mockResolvedValueOnce(tokenOk())
-        .mockResolvedValueOnce(apiFail(404))
-        .mockResolvedValueOnce(
-          apiOk({
-            tracks: {
-              items: [makeTrack({ id: 'low', popularity: 40 }), ...popular],
-              next: null,
-            },
-          }),
-        );
+    it('decade decks keep working while the API quota is exhausted', async () => {
+      installFakeSpotify({ playlists: { [ALL_OUT_80S]: decade(1980, 60) }, apiStatus: 429, apiHeaders: { 'retry-after': '36000' } });
 
-      const cards = await client.getGenreTracks('rock');
-      expect(cards.length).toBeGreaterThanOrEqual(10);
-      expect(cards[0].trackId).toBe('hit0');
-      expect(cards.find((c) => c.trackId === 'low')).toBeUndefined();
+      await expect(client.getTracksForLabel('Schlager')).rejects.toThrow();
+      const cards = await client.getTracksForLabel('80s');
 
-      const [recUrl, searchUrl] = [mockFetch.mock.calls[1], mockFetch.mock.calls[2]].map(
-        (c) => c[0] as string,
-      );
-      expect(recUrl).toContain('/recommendations?');
-      expect(searchUrl).toContain('/search?');
-      expect(searchUrl).toContain('genre%3Arock');
+      expect(cards.length).toBeGreaterThanOrEqual(50);
     });
-  });
 
-  describe('resolveSeedGenres', () => {
-    it('maps friendly labels to Spotify seed genres', () => {
-      expect(client.resolveSeedGenres("90's Rock")).toEqual(['rock']);
-      expect(client.resolveSeedGenres('Hip Hop')).toEqual(['hip-hop']);
-      expect(client.resolveSeedGenres('EDM')).toEqual(['electronic', 'dance']);
+    it('serves cached embed data and skips new embed requests while throttled', async () => {
+      installFakeSpotify({ playlists: { [ALL_OUT_80S]: decade(1980, 60) } });
+      await client.getTracksForLabel('80s');
+
+      installFakeSpotify({ playlists: { [ALL_OUT_80S]: decade(1980, 60) }, embedStatus: 429 });
+      mockFetch.mockClear();
+      const cards = await client.getTracksForLabel('80s');
+
+      expect(cards.length).toBeGreaterThanOrEqual(50);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
