@@ -1,5 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { socket } from '../socket/client';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  socket,
+  getPrimarySessionId,
+  saveDisplayName,
+  setPrimarySessionId,
+} from '../socket/client';
 import type { Room, Card, CardHidden, GameMode } from '../../../shared/types';
 
 export interface GameState {
@@ -20,14 +25,14 @@ export interface GameState {
   } | null;
   roundEnded: { winnerId: string | null } | null;
   myTokens: number;
+  /** Server identity of this device's main player */
+  sessionId: string;
   socketError: string | null;
   playlistPreviewCards: Card[] | null;
   playlistPreviewLoading: boolean;
-  connect: (displayName: string, email: string) => void;
-  connectAndCreateRoom: (displayName: string, email: string, topic: string) => void;
-  connectAndJoinRoom: (displayName: string, email: string, roomCode: string) => void;
-  createRoom: (topic: string) => void;
-  joinRoom: (code: string) => void;
+  connectAndCreateRoom: (displayName: string, topic: string) => void;
+  connectAndJoinRoom: (displayName: string, roomCode: string) => void;
+  leaveRoom: () => void;
   startRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => void;
   placeCard: (position: number) => void;
   challengeCard: () => void;
@@ -79,17 +84,33 @@ export function useGame(): GameState {
   const [playlistPreviewCards, setPlaylistPreviewCards] = useState<Card[] | null>(null);
   const [playlistPreviewLoading, setPlaylistPreviewLoading] = useState(false);
 
-  const sessionId = sessionStorage.getItem('hitster_session_id') ?? '';
+  const [sessionId, setSessionId] = useState(getPrimarySessionId);
+
+  // Room we are in — used to rejoin automatically after the socket reconnects
+  // (phone screen lock, flaky Wi-Fi), otherwise the player would stay "offline".
+  const roomCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
-    socket.on('room:created', ({ room: r }) => {
+    const adoptIdentity = (id: string, code: string) => {
+      roomCodeRef.current = code;
+      setPrimarySessionId(id);
+      setSessionId(id);
+    };
+
+    socket.on('connect', () => {
+      if (roomCodeRef.current) socket.emit('room:join', { roomCode: roomCodeRef.current });
+    });
+
+    socket.on('room:created', ({ room: r, roomCode, sessionId: id }) => {
+      adoptIdentity(id, roomCode);
       setRoom(r);
       setRoundEnded(null);
       setLastFlip(null);
       setSocketError(null);
     });
 
-    socket.on('room:joined', ({ room: r }) => {
+    socket.on('room:joined', ({ room: r, roomCode, sessionId: id }) => {
+      adoptIdentity(id, roomCode);
       setRoom(r);
       setRoundEnded(null);
       setLastFlip(null);
@@ -291,6 +312,7 @@ export function useGame(): GameState {
     });
 
     return () => {
+      socket.off('connect');
       socket.off('room:created');
       socket.off('room:joined');
       socket.off('room:updated');
@@ -307,15 +329,9 @@ export function useGame(): GameState {
     };
   }, [sessionId]);
 
-  const applySocketAuth = useCallback((displayName: string, email: string) => {
-    sessionStorage.setItem('hitster_display_name', displayName);
-    sessionStorage.setItem('hitster_email', email);
-    socket.auth = {
-      ...(socket.auth as object),
-      sessionId: sessionStorage.getItem('hitster_session_id') ?? '',
-      displayName,
-      email,
-    };
+  const applySocketAuth = useCallback((displayName: string) => {
+    saveDisplayName(displayName);
+    socket.auth = { sessionId: getPrimarySessionId(), displayName };
   }, []);
 
   const ensureConnected = useCallback((onConnected: () => void) => {
@@ -329,33 +345,24 @@ export function useGame(): GameState {
     }
   }, []);
 
-  const connect = useCallback((displayName: string, email: string) => {
-    applySocketAuth(displayName, email);
-    if (!socket.connected && !socket.active) {
-      socket.connect();
-    }
-  }, [applySocketAuth]);
-
-  const connectAndCreateRoom = useCallback((displayName: string, email: string, topic: string) => {
-    applySocketAuth(displayName, email);
+  const connectAndCreateRoom = useCallback((displayName: string, topic: string) => {
+    applySocketAuth(displayName);
     const trimmed = topic.trim();
     ensureConnected(() => socket.emit('room:create', { topic: trimmed }));
   }, [applySocketAuth, ensureConnected]);
 
-  const connectAndJoinRoom = useCallback((displayName: string, email: string, roomCode: string) => {
-    applySocketAuth(displayName, email);
+  const connectAndJoinRoom = useCallback((displayName: string, roomCode: string) => {
+    applySocketAuth(displayName);
     const code = roomCode.trim().toUpperCase();
     ensureConnected(() => socket.emit('room:join', { roomCode: code }));
   }, [applySocketAuth, ensureConnected]);
 
-  const createRoom = useCallback((topic: string) => {
-    ensureConnected(() => socket.emit('room:create', { topic }));
-  }, [ensureConnected]);
-
-  const joinRoom = useCallback((code: string) => {
-    const roomCode = code.trim().toUpperCase();
-    ensureConnected(() => socket.emit('room:join', { roomCode }));
-  }, [ensureConnected]);
+  const leaveRoom = useCallback(() => {
+    roomCodeRef.current = null;
+    socket.emit('room:leave');
+    // Give the leave packet a moment to flush before the page reloads
+    setTimeout(() => window.location.reload(), 200);
+  }, []);
 
   const startRound = useCallback((mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => {
     socket.emit('round:start', { mode, playlistLabel, cardsToWin, tokensEnabled });
@@ -424,14 +431,13 @@ export function useGame(): GameState {
     lastFlip,
     roundEnded,
     myTokens,
+    sessionId,
     socketError,
     playlistPreviewCards,
     playlistPreviewLoading,
-    connect,
     connectAndCreateRoom,
     connectAndJoinRoom,
-    createRoom,
-    joinRoom,
+    leaveRoom,
     startRound,
     placeCard,
     challengeCard,

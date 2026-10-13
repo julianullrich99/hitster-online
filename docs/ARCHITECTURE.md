@@ -76,7 +76,7 @@ disconnectTimers  — per-player auto-skip timers
 ```
 
 ### `client/src/socket/client.ts`
-Creates the typed `io()` connection, attaches `sessionId`, `displayName`, and `email` as Socket.io `auth`. Re-exports the socket instance for use across the app.
+Creates the typed `io()` connection, attaching `sessionId` and `displayName` as Socket.io `auth`. Re-exports the socket instance for use across the app.
 
 ### `client/src/game/useGame.ts`
 React hook. Manages local UI state and maps Socket.io events to state updates. The only component allowed to call `socket.emit(...)`. All child components receive props or context — they never touch the socket directly.
@@ -155,7 +155,9 @@ When `room.useTeams = true`, timelines and token pools are keyed by `teamId`, no
 
 ## Player identity
 
-Players are identified by `sessionId` — a UUID generated client-side on first visit and stored in `sessionStorage`. On reconnect, the same `sessionId` allows the server to restore the player's state. Email is stored in `Player` but is never broadcast to other clients.
+Players are identified by `sessionId` — a UUID generated client-side on first visit and stored in `sessionStorage`. On reconnect, the same `sessionId` allows the server to restore the player's state; the client re-emits `room:join` automatically after a socket reconnect.
+
+Within a room the display name is unique. `room:join` with the name of an **offline** player rebinds the connection to that player's `sessionId` (the server's per-connection `sessionId` is reassigned) and returns it in `room:joined.sessionId`; the client stores it as its new identity.
 
 ---
 

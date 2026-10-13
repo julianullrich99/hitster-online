@@ -23,6 +23,8 @@ import {
   leaveTeam,
   isActiveParticipant,
   endGame,
+  findPlayerByName,
+  removePlayer,
 } from './engine';
 import type { Room, Card, RoundConfig } from '../../../shared/types';
 
@@ -1278,5 +1280,43 @@ describe('endGame', () => {
     const room = createRoom('owner', 'Owner', 'test');
     const ended = endGame(room);
     expect(ended.status).toBe('game_over');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findPlayerByName / removePlayer
+// ---------------------------------------------------------------------------
+
+describe('findPlayerByName', () => {
+  it('matches trimmed and case-insensitive', () => {
+    const room = addPlayer(createRoom('owner', 'Owner', 'test'), 'p2', 'Anna');
+    expect(findPlayerByName(room, '  anna ')?.id).toBe('p2');
+    expect(findPlayerByName(room, 'Ann')).toBeUndefined();
+  });
+});
+
+describe('removePlayer', () => {
+  it('removes the player and their team membership in the lobby', () => {
+    let room = addPlayer(createRoom('owner', 'Owner', 'test'), 'p2', 'Anna');
+    room = createTeam(room, 't1', 'Red', 'p2');
+    const updated = removePlayer(room, 'p2');
+    expect(updated.players['p2']).toBeUndefined();
+    expect(updated.teams['t1']).toBeUndefined();
+    expect(updated.useTeams).toBe(false);
+  });
+
+  it('hands ownership to the next connected player', () => {
+    let room = addPlayer(createRoom('owner', 'Owner', 'test'), 'p2', 'Anna');
+    room = addPlayer(room, 'p3', 'Ben');
+    room = markDisconnected(room, 'p2');
+    expect(removePlayer(room, 'owner').ownerId).toBe('p3');
+  });
+
+  it('only marks the player offline mid-round', () => {
+    const room = addPlayer(createRoom('owner', 'Owner', 'test'), 'p2', 'Anna');
+    const { room: started } = initRound(room, defaultConfig, mockDeck(10));
+    const updated = removePlayer({ ...started, status: 'round_active' }, 'p2');
+    expect(updated.players['p2'].isConnected).toBe(false);
+    expect(updated.activeRound?.timelines['p2']).toBeDefined();
   });
 });

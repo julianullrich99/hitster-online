@@ -74,7 +74,10 @@ function pickProfiles(profiles: BotProfile[], count?: number): BotProfile[] {
   if (!count) return profiles;
   const result: BotProfile[] = [];
   for (let i = 0; i < count; i++) {
-    result.push(profiles[i % profiles.length]);
+    const profile = profiles[i % profiles.length];
+    const round = Math.floor(i / profiles.length);
+    // Names identify players within a room, so repeated profiles need distinct names
+    result.push(round === 0 ? profile : { ...profile, name: `${profile.name} ${round + 1}` });
   }
   return result;
 }

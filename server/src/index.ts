@@ -480,9 +480,9 @@ function resolveAndAdvance(roomCode: string): void {
 
 io.on('connection', (socket) => {
   const auth = socket.handshake.auth as SocketAuth;
-  const sessionId = auth.sessionId;
-  const email = (auth.email ?? '').trim();
-  const displayName = (auth.displayName ?? '').trim() || email.split('@')[0] || 'Anonymous';
+  // Reassigned when room:join takes over an offline player with the same name
+  let sessionId = auth.sessionId;
+  const displayName = (auth.displayName ?? '').trim().slice(0, 24) || 'Anonymous';
 
   console.log(`Client connected: ${socket.id} (session: ${sessionId}, name: ${displayName})`);
 
@@ -496,7 +496,7 @@ io.on('connection', (socket) => {
       socket.join(room.code);
       socketSession.set(socket.id, { sessionId, roomCode: room.code });
 
-      socket.emit('room:created', { roomCode: room.code, room });
+      socket.emit('room:created', { roomCode: room.code, room, sessionId });
       io.to(room.code).emit('room:updated', room);
     } catch (err) {
       socket.emit('error', err instanceof Error ? err.message : 'Failed to create room');
@@ -510,6 +510,17 @@ io.on('connection', (socket) => {
     try {
       const existing = store.get(data.roomCode.toUpperCase());
       if (!existing) { socket.emit('error', 'Room not found'); return; }
+
+      // The name is the identity within a room: an offline namesake is taken over
+      // (timeline, tokens, team), an online one blocks the name.
+      const namesake = engine.findPlayerByName(existing, displayName);
+      if (namesake && namesake.id !== sessionId) {
+        if (namesake.isConnected) {
+          socket.emit('error', `The name "${namesake.displayName}" is already taken in this room`);
+          return;
+        }
+        sessionId = namesake.id;
+      }
 
       let updatedRoom: Room;
       if (existing.players[sessionId] && existing.status === 'round_active') {
@@ -533,11 +544,41 @@ io.on('connection', (socket) => {
         disconnectTimers.delete(sessionId);
       }
 
-      socket.emit('room:joined', { roomCode: updatedRoom.code, room: updatedRoom });
+      socket.emit('room:joined', { roomCode: updatedRoom.code, room: updatedRoom, sessionId });
       io.to(updatedRoom.code).emit('room:updated', updatedRoom);
       void emitTurnSnapshot(socket, updatedRoom);
     } catch (err) {
       socket.emit('error', err instanceof Error ? err.message : 'Failed to join room');
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // room:leave
+  // ------------------------------------------------------------------
+  socket.on('room:leave', () => {
+    const session = socketSession.get(socket.id);
+    if (!session) return;
+    socketSession.delete(socket.id);
+    socket.leave(session.roomCode);
+
+    const room = store.get(session.roomCode);
+    if (!room) return;
+    const updatedRoom = engine.removePlayer(room, sessionId);
+    if (Object.keys(updatedRoom.players).length === 0) {
+      purgeRoomRuntime(session.roomCode);
+      store.delete(session.roomCode);
+      return;
+    }
+    store.set(updatedRoom);
+    io.to(session.roomCode).emit('room:updated', updatedRoom);
+    if (engine.allParticipantsOffline(updatedRoom)) {
+      scheduleEmptyRoomDeletion(session.roomCode);
+    } else if (
+      updatedRoom.status === 'round_active' &&
+      updatedRoom.activeRound?.turnOrder[updatedRoom.activeRound.turnIndex] === sessionId &&
+      updatedRoom.activeRound.currentTurn?.phase === 'place'
+    ) {
+      scheduleDisconnectSkip(session.roomCode, sessionId);
     }
   });
 

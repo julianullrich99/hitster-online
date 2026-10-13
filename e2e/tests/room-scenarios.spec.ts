@@ -14,13 +14,10 @@ import { test, expect, Browser, BrowserContext, Page } from '@playwright/test';
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function fillEmailAndName(page: Page, email: string, name?: string) {
+async function fillName(page: Page, name: string) {
   await page.goto('/');
-  await page.waitForSelector('input[type="email"]');
-  await page.fill('input[type="email"]', email);
-  if (name) {
-    await page.fill('input[placeholder="Leave blank to use email"]', name);
-  }
+  await page.waitForSelector('[data-testid="display-name-input"]');
+  await page.fill('[data-testid="display-name-input"]', name);
 }
 
 async function createRoom(page: Page, topic: string): Promise<string> {
@@ -63,11 +60,11 @@ async function spectateActiveRoom(page: Page, roomTopic: string): Promise<void> 
 }
 
 // ---------------------------------------------------------------------------
-// 1. Email and name persist when returning to the lobby
+// 1. Name persists when returning to the entry page
 // ---------------------------------------------------------------------------
 
-test('email and name persist after leaving a room', async ({ page }) => {
-  await fillEmailAndName(page, 'persist@example.com', 'PersistBot');
+test('name persists after leaving a room', async ({ page }) => {
+  await fillName(page, 'PersistBot');
   await createRoom(page, 'Persistence Test');
 
   // Verify we're in the room lobby
@@ -76,12 +73,8 @@ test('email and name persist after leaving a room', async ({ page }) => {
   // Leave the room
   await page.click('[data-testid="leave-btn"]');
 
-  // Back at entry page — check values are pre-filled from sessionStorage
-  await expect(page.locator('input[type="email"]')).toHaveValue('persist@example.com');
-  await expect(page.locator('input[placeholder="Leave blank to use email"]')).toHaveValue('PersistBot');
-
-  // Display name preview chip should show "PersistBot"
-  await expect(page.locator('.pr-name')).toHaveText('PersistBot');
+  // Back at entry page — name is pre-filled from localStorage
+  await expect(page.locator('[data-testid="display-name-input"]')).toHaveValue('PersistBot');
 });
 
 // ---------------------------------------------------------------------------
@@ -95,7 +88,7 @@ test('active game appears in lobby with correct status and participant', async (
   const p2: Page = await ctx2.newPage();
 
   try {
-    await fillEmailAndName(p1, 'host@example.com', 'HostPlayer');
+    await fillName(p1, 'HostPlayer');
     const roomCode = await createRoom(p1, 'Active Game Room');
     await startRound(p1);
 
@@ -127,7 +120,7 @@ test("room with genre '90s rock' appears in lobby with genre label", async ({ br
   const p2: Page = await ctx2.newPage();
 
   try {
-    await fillEmailAndName(p1, 'rock@example.com', 'RockBot');
+    await fillName(p1, 'RockBot');
     const roomCode = await createRoom(p1, '90s Rock Night');
     await startRound(p1, "90's rock");
 
@@ -157,7 +150,7 @@ test('room with Spotify playlist URL starts successfully in TEST_MODE', async ({
   const spotifyUrl = 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
 
   try {
-    await fillEmailAndName(p1, 'spotify@example.com', 'SpotifyBot');
+    await fillName(p1, 'SpotifyBot');
     const roomCode = await createRoom(p1, 'Spotify Classics');
     await startRound(p1, spotifyUrl);
 
@@ -187,9 +180,9 @@ test('multiple rooms are all visible in the lobby at the same time', async ({ br
   const roomCodes: string[] = [];
 
   const rooms = [
-    { email: 'multi1@example.com', name: 'Multi1', topic: 'Multi Room A', genre: 'pop' },
-    { email: 'multi2@example.com', name: 'Multi2', topic: 'Multi Room B', genre: 'jazz' },
-    { email: 'multi3@example.com', name: 'Multi3', topic: 'Multi Room C', genre: 'rock' },
+    { name: 'Multi1', topic: 'Multi Room A', genre: 'pop' },
+    { name: 'Multi2', topic: 'Multi Room B', genre: 'jazz' },
+    { name: 'Multi3', topic: 'Multi Room C', genre: 'rock' },
   ];
 
   try {
@@ -200,7 +193,7 @@ test('multiple rooms are all visible in the lobby at the same time', async ({ br
       contexts.push(ctx);
       pages.push(page);
 
-      await fillEmailAndName(page, r.email, r.name);
+      await fillName(page, r.name);
       const code = await createRoom(page, r.topic);
       roomCodes.push(code);
       await startRound(page, r.genre);
@@ -226,7 +219,7 @@ test('multiple rooms are all visible in the lobby at the same time', async ({ br
 // ---------------------------------------------------------------------------
 
 test('start round button transitions lobby to active game', async ({ page }) => {
-  await fillEmailAndName(page, 'starter@example.com', 'StarterBot');
+  await fillName(page, 'StarterBot');
   await createRoom(page, 'Start Button Test');
 
   // Verify we are in the lobby
@@ -244,7 +237,7 @@ test('start round button transitions lobby to active game', async ({ page }) => 
 // ---------------------------------------------------------------------------
 
 test('start round button disables while starting', async ({ page }) => {
-  await fillEmailAndName(page, 'disabler@example.com', 'DisablerBot');
+  await fillName(page, 'DisablerBot');
   await createRoom(page, 'Disable Test');
 
   await expect(page.locator('[data-testid="start-round-btn"]')).toBeEnabled();
@@ -269,7 +262,7 @@ test('room disappears from lobby after last player leaves', async ({ browser }: 
   const p2: Page = await ctx2.newPage();
 
   try {
-    await fillEmailAndName(p1, 'alone@example.com', 'LonelyBot');
+    await fillName(p1, 'LonelyBot');
     const roomCode = await createRoom(p1, 'Lonely Room');
 
     // Confirm room appears in lobby
@@ -296,7 +289,7 @@ test('room disappears from lobby after last player leaves', async ({ browser }: 
 // ---------------------------------------------------------------------------
 
 test('skip and buy buttons are visible during active turn', async ({ page }) => {
-  await fillEmailAndName(page, 'turnui@example.com', 'TurnUIBot');
+  await fillName(page, 'TurnUIBot');
   await createRoom(page, 'Turn UI Test');
   await startRound(page);
 
@@ -325,9 +318,9 @@ test('joiner sees host timeline and placement during challenge', async ({ browse
   const p2: Page = await ctx2.newPage();
 
   try {
-    await fillEmailAndName(p1, 'host-watch@example.com', 'HostWatch');
+    await fillName(p1, 'HostWatch');
     const roomTopic = await createRoom(p1, 'Watch Timeline Test');
-    await fillEmailAndName(p2, 'joiner-watch@example.com', 'JoinerWatch');
+    await fillName(p2, 'JoinerWatch');
     await joinRoomByClick(p2, roomTopic);
     await startRound(p1);
 
@@ -374,13 +367,13 @@ test('mid-round joiner sees active timeline and now playing', async ({ browser }
   const p2: Page = await ctx2.newPage();
 
   try {
-    await fillEmailAndName(p1, 'host-spec@example.com', 'HostSpec');
+    await fillName(p1, 'HostSpec');
     const roomTopic = await createRoom(p1, 'Mid Spectate Test');
     await startRound(p1);
 
     await expect(p1.locator('[data-testid="round-active"]')).toBeVisible({ timeout: 8_000 });
 
-    await fillEmailAndName(p2, 'late-spec@example.com', 'LateSpec');
+    await fillName(p2, 'LateSpec');
     await spectateActiveRoom(p2, roomTopic);
 
     await expect(p2.locator('[data-testid="watch-timeline"]')).toBeVisible({ timeout: 15_000 });
@@ -398,7 +391,7 @@ test('mid-round joiner sees active timeline and now playing', async ({ browser }
 // ---------------------------------------------------------------------------
 
 test('name song panel is visible and inputs work during active turn', async ({ page }) => {
-  await fillEmailAndName(page, 'namesong@example.com', 'NameSongBot');
+  await fillName(page, 'NameSongBot');
   await createRoom(page, 'Name Song Test');
   await startRound(page);
 
@@ -429,11 +422,11 @@ test('disconnected player turn auto-advances after timeout', async ({ browser }:
 
   try {
     // p1 creates room and starts round
-    await fillEmailAndName(p1, 'host-dc@example.com', 'HostBot');
+    await fillName(p1, 'HostBot');
     const roomCode = await createRoom(p1, 'Disconnect Test');
 
     // p2 joins by double-clicking the room in the lobby list
-    await fillEmailAndName(p2, 'joiner-dc@example.com', 'JoinerBot');
+    await fillName(p2, 'JoinerBot');
     await joinRoomByClick(p2, roomCode);
 
     await startRound(p1);
@@ -474,7 +467,7 @@ test('disconnected player turn auto-advances after timeout', async ({ browser }:
 // ---------------------------------------------------------------------------
 
 test('mode selector shows all modes and can be changed', async ({ page }) => {
-  await fillEmailAndName(page, 'mode-host@example.com', 'ModeHost');
+  await fillName(page, 'ModeHost');
   await createRoom(page, 'Mode Test');
   await expect(page.locator('[data-testid="lobby-screen"]')).toBeVisible({ timeout: 8_000 });
 
@@ -494,4 +487,42 @@ test('mode selector shows all modes and can be changed', async ({ page }) => {
   // Cards-to-win and tokens-enabled are visible
   await expect(page.locator('[data-testid="cards-to-win-input"]')).toBeVisible();
   await expect(page.locator('[data-testid="tokens-enabled-toggle"]')).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// Name identity: same name in the same room takes over the offline seat
+// ---------------------------------------------------------------------------
+
+test('rejoining with the same name restores the player', async ({ browser }: { browser: Browser }) => {
+  const ctx1 = await browser.newContext();
+  const ctx2 = await browser.newContext();
+  const ctx3 = await browser.newContext();
+  try {
+    const p1 = await ctx1.newPage();
+    const p2 = await ctx2.newPage();
+    await fillName(p1, 'HostName');
+    const topic = await createRoom(p1, 'Name Rejoin');
+
+    await fillName(p2, 'Rejoiner');
+    await joinRoomByClick(p2, topic);
+    await expect(p1.locator('[data-testid="lobby-player-name"]', { hasText: 'Rejoiner' })).toBeVisible();
+
+    // Same name while the original is online → rejected
+    const p3 = await ctx3.newPage();
+    await fillName(p3, 'rejoiner');
+    await waitForRooms(p3);
+    await p3.locator('[data-testid="room-card-joinable"]', { hasText: topic }).first().click();
+    await expect(p3.locator('.server-error-msg')).toContainText('already taken');
+
+    // Original drops (tab closed) → same name takes the seat over, no duplicate player
+    await ctx2.close();
+    await expect(p1.locator('.lobby-player-chip', { hasText: 'Rejoiner' }).locator('.player-disconnected-badge')).toBeVisible({ timeout: 8_000 });
+    await p3.locator('[data-testid="room-card-joinable"]', { hasText: topic }).first().click();
+    await expect(p3.locator('[data-testid="lobby-screen"]')).toBeVisible({ timeout: 8_000 });
+    await expect(p1.locator('[data-testid="lobby-player-name"]', { hasText: /rejoiner/i })).toHaveCount(1);
+    await expect(p1.locator('.lobby-player-chip', { hasText: 'Rejoiner' }).locator('.player-disconnected-badge')).toHaveCount(0);
+  } finally {
+    await ctx1.close();
+    await ctx3.close();
+  }
 });

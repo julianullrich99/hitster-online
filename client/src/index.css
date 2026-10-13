@@ -2109,3 +2109,30 @@ body {
   animation: dotpulse 1.4s infinite;
 }
 
+
+.field-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 6px;
+}
+
+.join-code-row {
+  display: flex;
+  gap: 8px;
+}
+.join-code-row .form-input {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 13px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-align: center;
+}
+.btn-join-code {
+  width: auto;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  background: transparent;
+  border-color: #4ade80;
+  color: #4ade80;
+}
+

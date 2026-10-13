@@ -124,7 +124,7 @@ Server emits to rooms using `io.to(roomCode).emit(...)`. Never emit to individua
 State is a `Map<string, Room>` held in memory. Do not introduce a database, Redis, or any persistence layer. Rooms are lost on server restart — this is acceptable.
 
 ### 5. No user authentication
-Players are identified by a `sessionId` (UUID generated client-side on first visit, stored in `sessionStorage`). No login, no JWT, no cookies. The room owner is simply the player whose `sessionId` created the room.
+Players are identified by a `sessionId` (UUID generated client-side on first visit, stored in `sessionStorage`) and enter only a name. No email, no login, no JWT, no cookies. The room owner is simply the player whose `sessionId` created the room.
 
 ### 6. Spotify integration
 - Use **Client Credentials Flow** only. Never use Authorization Code Flow.
@@ -157,7 +157,8 @@ Each client schedules playback `playAt - serverNow` ms after receipt (never comp
 | Flip reveal | Result shown ~2s (`FLIP_REVEAL_DISPLAY_MS`); server delays next turn accordingly. |
 | Spectator | Joining mid-round: watch only; plays next round; cannot challenge. |
 | Game log | Server-maintained `activeRound.gameLog`; client renders; survives late join. |
-| Leave room | Header **Leave** in lobby and during rounds (reloads to entry page). |
+| Leave room | Header **Leave** emits `room:leave` (removes the player between rounds, offline mid-round) and reloads to the entry page. |
+| Identity | Name only, unique per room. Joining with an offline player's name takes over that seat. |
 | Token: skip | Spend 1 to discard current card, draw new one |
 | Token: buy | Spend 3 to place a card directly (before hearing song). Skip next turn. |
 | Token: earn | Name song title + artist correctly = +1 token (max 5) |

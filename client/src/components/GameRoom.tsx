@@ -633,6 +633,9 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
               {p.id === room.ownerId && (
                 <span style={{ fontSize: 10, color: '#fbbf24' }}>★</span>
               )}
+              {!p.isConnected && (
+                <span className="player-disconnected-badge">offline</span>
+              )}
             </div>
           );
         })}

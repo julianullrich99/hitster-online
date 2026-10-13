@@ -14,8 +14,7 @@ export type TokenStrategy = 'hoard' | 'spend' | 'balanced';
 
 export interface Player {
   id: string;         // sessionId (UUID, generated client-side)
-  displayName: string;
-  email?: string;     // never shared with other clients
+  displayName: string; // unique per room (case-insensitive) — also the rejoin key
   isConnected: boolean;
   missedTurns: number;
   isSpectator?: boolean; // true when player joins a ROUND_ACTIVE room
@@ -149,10 +148,14 @@ export interface ServerToClientEvents {
   'playlist:previewed': (data: { cards: Card[] }) => void;
 
   /** Emitted to creator after room:create succeeds */
-  'room:created': (data: { roomCode: string; room: Room }) => void;
+  'room:created': (data: { roomCode: string; room: Room; sessionId: string }) => void;
 
-  /** Emitted to joiner after room:join succeeds */
-  'room:joined': (data: { roomCode: string; room: Room }) => void;
+  /**
+   * Emitted to joiner after room:join succeeds. `sessionId` is the identity the server
+   * bound to this socket — it differs from the handshake id when the joiner took over
+   * an offline player with the same name.
+   */
+  'room:joined': (data: { roomCode: string; room: Room; sessionId: string }) => void;
 
   /** Broadcast to all room members when room state changes */
   'room:updated': (room: Room) => void;
@@ -223,6 +226,9 @@ export interface ClientToServerEvents {
   /** Join an existing room by code */
   'room:join': (data: { roomCode: string }) => void;
 
+  /** Leave the room for good (removes the player in lobby; marks offline mid-round) */
+  'room:leave': () => void;
+
   /** Owner starts the round */
   'round:start': (data: { playlistLabel?: string; mode: GameMode; cardsToWin?: number; tokensEnabled?: boolean }) => void;
 
@@ -260,8 +266,7 @@ export interface ClientToServerEvents {
 
 export interface SocketAuth {
   sessionId: string;     // UUID, generated client-side
-  displayName: string;   // shown to other players
-  email?: string;        // never shared
+  displayName: string;   // shown to other players; identifies the player within a room
 }
 
 /** GET /api/spotify/tracks/:trackId/embed-preview */

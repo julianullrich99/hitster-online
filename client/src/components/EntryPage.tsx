@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Room, RoomSummary } from '../../../shared/types';
+import { getSavedDisplayName, saveDisplayName } from '../socket/client';
 
 interface EntryPageProps {
-  onConnectAndCreateRoom: (displayName: string, email: string, topic: string) => void;
-  onConnectAndJoinRoom: (displayName: string, email: string, roomCode: string) => void;
+  onConnectAndCreateRoom: (displayName: string, topic: string) => void;
+  onConnectAndJoinRoom: (displayName: string, roomCode: string) => void;
   serverUrl?: string;
   serverError?: string | null;
   roomJoined?: Room | null;
@@ -18,10 +19,6 @@ function avatarColor(name: string): string {
   let sum = 0;
   for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
-}
-
-function isValidEmail(v: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
 function statusBadgeClass(status: string): string {
@@ -47,10 +44,9 @@ export default function EntryPage({
   serverError,
   roomJoined,
 }: EntryPageProps) {
-  const [email, setEmail] = useState(() => sessionStorage.getItem('hitster_email') ?? '');
-  const [emailDirty, setEmailDirty] = useState(() => !!sessionStorage.getItem('hitster_email'));
-  const [emailError, setEmailError] = useState(false);
-  const [displayName, setDisplayName] = useState(() => sessionStorage.getItem('hitster_display_name') ?? '');
+  const [displayName, setDisplayName] = useState(getSavedDisplayName);
+  const [nameError, setNameError] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
   const [joinTopic, setJoinTopic] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
@@ -65,8 +61,8 @@ export default function EntryPage({
     }
   }, [roomJoined, serverError]);
 
-  const resolvedName = displayName.trim() || (email.trim() ? email.trim().split('@')[0] : '');
-  const emailValid = isValidEmail(email);
+  const resolvedName = displayName.trim();
+  const nameValid = resolvedName.length > 0;
 
   // Fetch rooms every 10s
   const fetchRooms = useCallback(async () => {
@@ -90,41 +86,35 @@ export default function EntryPage({
     return () => clearInterval(interval);
   }, [fetchRooms]);
 
-  function handleEmailBlur() {
-    if (email.trim() && !emailValid) {
-      setEmailError(true);
-      setEmailDirty(true);
-    }
-  }
-
-  function handleEmailChange(v: string) {
-    setEmail(v);
-    sessionStorage.setItem('hitster_email', v);
-    setEmailError(false);
-    setEmailDirty(true);
+  function handleNameChange(v: string) {
+    setDisplayName(v);
+    saveDisplayName(v);
+    setNameError(false);
   }
 
   function handleCreateClick() {
-    if (!emailValid) return;
+    if (!nameValid) {
+      setNameError(true);
+      return;
+    }
     setShowCreateModal(true);
     setTimeout(() => topicInputRef.current?.focus(), 50);
   }
 
   function handleJoinRoom(roomCode: string) {
-    if (!emailValid) {
-      setEmailError(true);
-      setEmailDirty(true);
+    if (!nameValid) {
+      setNameError(true);
       return;
     }
-    if (connecting) return;
+    if (connecting || !roomCode.trim()) return;
     setConnecting(true);
-    onConnectAndJoinRoom(resolvedName || email, email, roomCode);
+    onConnectAndJoinRoom(resolvedName, roomCode);
   }
 
   function handleCreateSubmit() {
-    if (!emailValid || !joinTopic.trim()) return;
+    if (!nameValid || !joinTopic.trim()) return;
     setConnecting(true);
-    onConnectAndCreateRoom(resolvedName || email, email, joinTopic.trim());
+    onConnectAndCreateRoom(resolvedName, joinTopic.trim());
     setShowCreateModal(false);
     setJoinTopic('');
   }
@@ -159,53 +149,27 @@ export default function EntryPage({
             Build your timeline. Guess the decade. First to 6 songs wins.
           </div>
 
-          {/* Email */}
+          {/* Name — the only identity: rejoin a room under the same name to get your seat back */}
           <div className="field">
             <div className="field-label">
               <span className="req-dot" />
-              Email address
+              Your name
             </div>
             <input
-              className={`form-input${emailValid && emailDirty ? ' valid' : ''}${emailError ? ' err' : ''}`}
-              type="email"
-              placeholder="you@example.com"
-              autoComplete="email"
-              value={email}
-              onChange={e => handleEmailChange(e.target.value)}
-              onBlur={handleEmailBlur}
-            />
-            {emailError && (
-              <div className="err-msg">Enter a valid email address</div>
-            )}
-          </div>
-
-          {/* Display name */}
-          <div className="field">
-            <div className="field-label">
-              Display name{' '}
-              <span className="opt-label">optional</span>
-            </div>
-            <input
-              className="form-input"
+              className={`form-input${nameValid ? ' valid' : ''}${nameError ? ' err' : ''}`}
               type="text"
-              placeholder="Leave blank to use email"
+              placeholder="e.g. Anna"
+              autoComplete="nickname"
               maxLength={24}
               value={displayName}
-              onChange={e => { setDisplayName(e.target.value); sessionStorage.setItem('hitster_display_name', e.target.value); }}
+              onChange={e => handleNameChange(e.target.value)}
+              data-testid="display-name-input"
             />
-            <div className="preview-row">
-              <div className="pr-label">Shown as</div>
-              <div
-                className="pr-ava"
-                style={resolvedName ? {
-                  background: avatarColor(resolvedName) + '22',
-                  borderColor: avatarColor(resolvedName),
-                  color: avatarColor(resolvedName),
-                } : {}}
-              >
-                {resolvedName ? resolvedName[0].toUpperCase() : '?'}
-              </div>
-              <div className="pr-name">{resolvedName || '—'}</div>
+            {nameError && (
+              <div className="err-msg">Enter your name first</div>
+            )}
+            <div className="field-hint">
+              Lost connection? Join the same room with the same name to continue.
             </div>
           </div>
 
@@ -214,11 +178,33 @@ export default function EntryPage({
           {/* Create button */}
           <button
             className="btn btn-create"
-            disabled={!emailValid || connecting}
+            disabled={connecting}
             onClick={handleCreateClick}
           >
             {connecting ? '⏳ Connecting…' : '⊕ Create a room'}
           </button>
+
+          <div className="join-code-row">
+            <input
+              className="form-input"
+              type="text"
+              placeholder="Room code"
+              maxLength={4}
+              autoCapitalize="characters"
+              value={joinCode}
+              onChange={e => setJoinCode(e.target.value.toUpperCase())}
+              onKeyDown={e => e.key === 'Enter' && handleJoinRoom(joinCode)}
+              data-testid="join-code-input"
+            />
+            <button
+              className="btn btn-join-code"
+              disabled={connecting || joinCode.trim().length !== 4}
+              onClick={() => handleJoinRoom(joinCode)}
+              data-testid="join-code-btn"
+            >
+              Join
+            </button>
+          </div>
 
           {/* Server error banner */}
           {serverError && (

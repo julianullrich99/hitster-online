@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useGame } from './game/useGame';
 import { getServerUrl } from './config';
 import EntryPage from './components/EntryPage';
@@ -6,10 +5,6 @@ import GameRoom from './components/GameRoom';
 
 export default function App() {
   const game = useGame();
-
-  const sessionId = useMemo(() => {
-    return sessionStorage.getItem('hitster_session_id') ?? '';
-  }, []);
 
   const serverUrl = getServerUrl();
 
@@ -37,7 +32,7 @@ export default function App() {
       lastFlip={game.lastFlip}
       roundEnded={game.roundEnded}
       myTokens={game.myTokens}
-      sessionId={sessionId}
+      sessionId={game.sessionId}
       socketError={game.socketError}
       onStartRound={game.startRound}
       onPlaceCard={game.placeCard}
@@ -54,9 +49,7 @@ export default function App() {
       playlistPreviewCards={game.playlistPreviewCards}
       playlistPreviewLoading={game.playlistPreviewLoading}
       onEndGame={game.endGame}
-      onLeave={() => {
-        window.location.reload();
-      }}
+      onLeave={game.leaveRoom}
     />
   );
 }

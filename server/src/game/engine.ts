@@ -77,6 +77,38 @@ export function addPlayer(room: Room, playerId: string, displayName: string): Ro
   };
 }
 
+/** Names are compared trimmed and case-insensitive — "Anna" and " anna" are the same player. */
+export function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/** Player in this room whose display name matches (see normalizeName) */
+export function findPlayerByName(room: Room, displayName: string): Player | undefined {
+  const wanted = normalizeName(displayName);
+  return Object.values(room.players).find(p => normalizeName(p.displayName) === wanted);
+}
+
+/**
+ * Player leaves for good. Between rounds they are removed (incl. teams; ownership passes to
+ * the next connected player). Mid-round they stay on the board and are only marked offline,
+ * so timelines and turn order remain consistent.
+ */
+export function removePlayer(room: Room, playerId: string): Room {
+  if (!room.players[playerId]) return room;
+  if (room.status === 'round_active') return markDisconnected(room, playerId);
+
+  const { [playerId]: _removed, ...players } = room.players;
+  const teams = Object.fromEntries(
+    Object.entries(removePlayerFromTeams(room.teams, playerId)).filter(([, t]) => t.playerIds.length > 0)
+  );
+  let ownerId = room.ownerId;
+  if (ownerId === playerId) {
+    const next = Object.values(players).find(p => p.isConnected) ?? Object.values(players)[0];
+    ownerId = next?.id ?? ownerId;
+  }
+  return { ...room, players, teams, useTeams: room.useTeams && Object.keys(teams).length > 0, ownerId };
+}
+
 /** Mark player disconnected; return updated room */
 export function markDisconnected(room: Room, playerId: string): Room {
   if (!room.players[playerId]) return room;

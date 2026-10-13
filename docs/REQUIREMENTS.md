@@ -12,9 +12,11 @@ _What the system does from a player's perspective. No technical detail._
 ---
 
 ### 1.1 Player Onboarding
-- A player opens the game URL and enters their **email address** (required) and optionally a **display name**.
-- The **display name** is shown to other players. If omitted, the local part of the email address is used as the fallback display name (e.g. `alex` from `alex@example.com`).
-- Email is used to identify a player across reconnects and sessions. It is **never shown to other players**.
+- A player opens the game URL and enters only their **name** (required, max 24 chars). No email, no account.
+- The name is shown to other players and **identifies the player within a room**: names are unique per room (trimmed, case-insensitive).
+  - Joining with a name that belongs to an **online** player is rejected ("name already taken").
+  - Joining with the name of an **offline** player takes over that seat — timeline, tokens, team and ownership — e.g. after closing the tab, a phone reload or switching devices.
+- The last used name is remembered on the device (`localStorage`) and pre-filled.
 - After completing the form, the player can either:
   - **Create a room** (becoming the room owner), or
   - **Join a room** by entering a 4-character room code, or
@@ -29,7 +31,7 @@ _What the system does from a player's perspective. No technical detail._
   - **Participants**: player count and leader name
   - **Round status**: lobby waiting, or current round number
   - **Progress**: for in-progress rounds, the leading player/team's card count and the target (e.g. "Mike — 4 / 6 cards")
-- Clicking a room card pre-fills the join code. The player still needs to have entered a valid email before joining.
+- Clicking a room card joins it directly (a name must be entered first). A room code can also be typed in.
 - Rooms in **LOBBY** state can be joined freely.
 - Rooms in **ROUND_ACTIVE** state can be joined as a **spectator**: watch the active timeline and game log, but no placement, tokens, or challenges until the next round.
 - Rooms in **GAME_OVER** state are shown greyed-out and cannot be joined.
@@ -42,6 +44,7 @@ _What the system does from a player's perspective. No technical detail._
 - Players can join a room at any point while it is in the **lobby** state (before a round starts).
 - Only the room owner can configure rounds and start the game.
 - Maximum **12 players** or **6 teams** per room.
+- **Leave** removes the player from the room between rounds (ownership passes to the next connected player); mid-round they stay on the board as offline so they can rejoin by name.
 - When **every participant is offline** (no open Socket.io connection), the room is removed from the server after a short grace period (~60s; 5s in test mode), including mid-round and game-over rooms.
 
 ### 1.3 Teams
@@ -146,9 +149,8 @@ Each turn has three phases:
 - All game state is server-side and broadcast via WebSocket. Clients are stateless renderers.
 
 ### 2.6 No Authentication
-- Players are identified by email + session ID (UUID in `sessionStorage`).
-- Display name is the player's chosen name, or the email local part if omitted.
-- Room ownership is tied to the creator's session ID.
+- Players are identified by session ID (UUID in `sessionStorage`) and, within a room, by their unique name (see §1.1).
+- Room ownership is tied to the creator's session ID (taken over along with the seat when rejoining by name).
 
 ---
 
