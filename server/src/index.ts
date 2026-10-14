@@ -21,11 +21,11 @@ for (const envPath of [
 }
 import {
   CARDS_TO_WIN_DEFAULT,
-  CARDS_TO_WIN_MAX,
   CARDS_TO_WIN_MIN,
   CHALLENGE_WINDOW_MS as DEFAULT_CHALLENGE_WINDOW_MS,
   FLIP_REVEAL_DISPLAY_MS as DEFAULT_FLIP_REVEAL_DISPLAY_MS,
-  TURN_PLACE_TIMEOUT_MS as DEFAULT_TURN_PLACE_TIMEOUT_MS,
+  TURN_SECONDS_DEFAULT,
+  TURN_SECONDS_OPTIONS,
 } from '../../shared/constants';
 import type { Socket } from 'socket.io';
 import type {
@@ -97,10 +97,13 @@ const EMPTY_ROOM_TTL_MS = process.env.TEST_MODE === 'true' ? 5_000 : 60_000;
 // Disconnect: auto-skip after this delay if still in place phase
 const TURN_TIMEOUT_MS = process.env.TEST_MODE === 'true' ? 3_000 : 15_000;
 
-// Connected player: max time to place before auto-skip (full turn clock)
-// Longer in TEST_MODE so Playwright can complete place flows before auto-skip
-const TURN_PLACE_TIMEOUT_MS =
-  process.env.TEST_MODE === 'true' ? 25_000 : DEFAULT_TURN_PLACE_TIMEOUT_MS;
+// Connected player: max time to place before auto-skip (full turn clock), from the round config.
+// Fixed in TEST_MODE so Playwright can complete place flows before auto-skip.
+function placeTimeoutMs(room: Room): number | null {
+  if (process.env.TEST_MODE === 'true') return 25_000;
+  const seconds = room.activeRound?.config.turnSeconds;
+  return seconds ? seconds * 1000 : null;
+}
 
 // roomCode → place-phase turn timer (listen + place)
 const placeTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -240,12 +243,13 @@ function autoSkipActiveTurn(
   startTurn(roomCode);
 }
 
-function schedulePlaceTurnTimeout(roomCode: string, playerId: string): void {
+function schedulePlaceTurnTimeout(roomCode: string, playerId: string, timeoutMs: number | null): void {
   clearPlaceTurnTimer(roomCode);
+  if (timeoutMs === null) return;
   const timer = setTimeout(() => {
     placeTurnTimers.delete(roomCode);
     autoSkipActiveTurn(roomCode, playerId, 'timeout');
-  }, TURN_PLACE_TIMEOUT_MS);
+  }, timeoutMs);
   placeTurnTimers.set(roomCode, timer);
 }
 
@@ -284,7 +288,7 @@ function buildTurnStartedPayload(
   activeId: string,
   hidden: CardHidden,
   streamUrl: string | null,
-  turnEndsAt: number,
+  turnEndsAt: number | null,
   playAt: number,
 ): TurnStartedPayload {
   return {
@@ -297,6 +301,11 @@ function buildTurnStartedPayload(
     timelineLength: engine.timelineLength(room, activeId),
     turnEndsAt,
   };
+}
+
+function turnEndsAtFor(room: Room): number | null {
+  const ms = placeTimeoutMs(room);
+  return ms === null ? null : Date.now() + ms;
 }
 
 /** Catch up joiners / reconnects who missed the room-wide turn:started broadcast. */
@@ -320,7 +329,7 @@ async function emitTurnSnapshot(
       activeId,
       ar.currentCard,
       streamUrl,
-      Date.now() + TURN_PLACE_TIMEOUT_MS,
+      turnEndsAtFor(room),
       inPlacePhase ? Date.now() + 600 : 0,
     ),
   );
@@ -381,8 +390,8 @@ async function startTurn(roomCode: string): Promise<void> {
   };
   store.set(updatedRoom);
 
-  const turnEndsAt = Date.now() + TURN_PLACE_TIMEOUT_MS;
-  schedulePlaceTurnTimeout(roomCode, activeId);
+  const turnEndsAt = turnEndsAtFor(updatedRoom);
+  schedulePlaceTurnTimeout(roomCode, activeId, placeTimeoutMs(updatedRoom));
 
   io.to(roomCode).emit(
     'turn:started',
@@ -597,14 +606,18 @@ io.on('connection', (socket) => {
     }
 
     try {
-      const cardsToWin = Math.min(
-        CARDS_TO_WIN_MAX,
-        Math.max(CARDS_TO_WIN_MIN, data.cardsToWin ?? CARDS_TO_WIN_DEFAULT),
-      );
+      const requestedCards = Math.floor(Number(data.cardsToWin ?? CARDS_TO_WIN_DEFAULT));
+      const cardsToWin = Number.isFinite(requestedCards)
+        ? Math.max(CARDS_TO_WIN_MIN, requestedCards)
+        : CARDS_TO_WIN_DEFAULT;
+      const turnSeconds = data.turnSeconds === undefined || !TURN_SECONDS_OPTIONS.includes(data.turnSeconds)
+        ? TURN_SECONDS_DEFAULT
+        : data.turnSeconds;
       const config: RoundConfig = {
         playlistLabel: data.playlistLabel,
         mode: data.mode,
         cardsToWin,
+        turnSeconds,
         tokensEnabled: data.tokensEnabled ?? true,
       };
 

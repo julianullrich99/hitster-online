@@ -1,10 +1,11 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import {
   CARDS_TO_WIN_DEFAULT,
-  CARDS_TO_WIN_MAX,
   CARDS_TO_WIN_MIN,
   CHALLENGE_WINDOW_MS,
   FLIP_REVEAL_DISPLAY_MS,
+  TURN_SECONDS_DEFAULT,
+  TURN_SECONDS_OPTIONS,
 } from '../../../shared/constants';
 import type { Room, Card, CardHidden, GameMode, Player, Team } from '../../../shared/types';
 import type { LocalPlayer } from '../game/useGame';
@@ -199,7 +200,8 @@ function PlayerList({
             Deck: <span className="round-info-val" style={{
               color: round.deckRemaining <= 3 ? '#ef4444' : round.deckRemaining <= 10 ? '#fbbf24' : undefined
             }}>{round.deckRemaining} left</span><br />
-            Target: <span className="round-info-val-green">{round.config.cardsToWin} cards</span>
+            Target: <span className="round-info-val-green">{round.config.cardsToWin} cards</span><br />
+            Time: <span className="round-info-val">{round.config.turnSeconds ? `${round.config.turnSeconds}s` : 'no limit'}</span>
           </div>
         </div>
       )}
@@ -578,7 +580,7 @@ const MODES: { value: GameMode; label: string; desc: string }[] = [
 interface LobbyScreenProps {
   room: Room;
   sessionId: string;
-  onStartRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => void;
+  onStartRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, turnSeconds?: number | null, tokensEnabled?: boolean) => void;
   onCreateTeam: (name: string) => void;
   onJoinTeam: (teamId: string) => void;
   onLeaveTeam: () => void;
@@ -599,6 +601,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
   const [playlistLabel, setPlaylistLabel] = useState('');
   const [mode, setMode] = useState<GameMode>('original');
   const [cardsToWin, setCardsToWin] = useState(CARDS_TO_WIN_DEFAULT);
+  const [turnSeconds, setTurnSeconds] = useState<number | null>(TURN_SECONDS_DEFAULT);
   const [tokensEnabled, setTokensEnabled] = useState(true);
   const [starting, setStarting] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
@@ -614,7 +617,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
 
   function handleStart() {
     setStarting(true);
-    onStartRound(mode, playlistLabel.trim() || undefined, cardsToWin, tokensEnabled);
+    onStartRound(mode, playlistLabel.trim() || undefined, cardsToWin, turnSeconds, tokensEnabled);
   }
 
   function handleAddLocal() {
@@ -718,19 +721,33 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
                 className="form-input"
                 type="number"
                 min={CARDS_TO_WIN_MIN}
-                max={CARDS_TO_WIN_MAX}
                 value={cardsToWin}
                 onChange={e =>
-                  setCardsToWin(
-                    Math.max(
-                      CARDS_TO_WIN_MIN,
-                      Math.min(CARDS_TO_WIN_MAX, Number(e.target.value)),
-                    ),
-                  )
+                  setCardsToWin(Math.max(CARDS_TO_WIN_MIN, Math.floor(Number(e.target.value)) || CARDS_TO_WIN_MIN))
                 }
                 data-testid="cards-to-win-input"
                 style={{ width: 72 }}
               />
+            </div>
+
+            <div className="lobby-config-row">
+              <label className="lobby-config-label" htmlFor="turn-seconds">
+                Time per Turn
+              </label>
+              <select
+                id="turn-seconds"
+                className="form-input"
+                value={turnSeconds ?? ''}
+                onChange={e => setTurnSeconds(e.target.value ? Number(e.target.value) : null)}
+                data-testid="turn-seconds-select"
+                style={{ width: 'auto' }}
+              >
+                {TURN_SECONDS_OPTIONS.map(s => (
+                  <option key={s ?? 'none'} value={s ?? ''}>
+                    {s ? `${s} seconds` : 'No limit'}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="lobby-config-row">
@@ -930,7 +947,7 @@ export interface GameRoomProps {
   /** Extra hot-seat players on this device */
   localPlayers: LocalPlayer[];
   socketError?: string | null;
-  onStartRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => void;
+  onStartRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, turnSeconds?: number | null, tokensEnabled?: boolean) => void;
   onPlaceCard: (actorId: string, position: number) => void;
   onChallengeCard: (actorId: string) => void;
   onSkipCard: (actorId: string) => void;

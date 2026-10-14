@@ -46,6 +46,7 @@ function makeCard(trackId: string, year: number): Card {
 const defaultConfig: RoundConfig = {
   mode: 'original',
   cardsToWin: 6,
+  turnSeconds: 60,
   tokensEnabled: true,
 };
 
@@ -739,7 +740,7 @@ describe('initRound — starting tokens by mode', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode, cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode, cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
     const { room: started } = initRound(room, config, deck);
     if (mode === 'cooperative') return started.activeRound!.tokens['cooperative'];
     return started.activeRound!.tokens['p1'];
@@ -765,7 +766,7 @@ describe('initRound — starting tokens by mode', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode: 'cooperative', cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode: 'cooperative', cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
     const { room: started } = initRound(room, config, deck);
     expect(started.activeRound!.timelines['cooperative']).toBeDefined();
     expect(started.activeRound!.timelines['p1']).toBeUndefined();
@@ -791,7 +792,7 @@ describe('activeEntityId', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode: 'cooperative', cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode: 'cooperative', cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
     const { room: started } = initRound(room, config, deck);
     expect(activeEntityId(started, 'p1')).toBe('cooperative');
   });
@@ -806,7 +807,7 @@ describe('applyNamingBonus — mode restrictions', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode, cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode, cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
     const { room: started } = initRound(room, config, deck);
     return started;
   }
@@ -836,7 +837,7 @@ describe('applyNamingBonus — mode restrictions', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode: 'original', cardsToWin: 6, tokensEnabled: false };
+    const config: RoundConfig = { mode: 'original', cardsToWin: 6, turnSeconds: 60, tokensEnabled: false };
     const { room: started } = initRound(room, config, deck);
     const tokensBefore = { ...started.activeRound!.tokens };
     const after = applyNamingBonus(started, 'p1');
@@ -853,7 +854,7 @@ describe('resolveFlip — cooperative mode', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 20 }, (_, i) => makeCard(`f${i}`, 2000 + i));
-    const config: RoundConfig = { mode: 'cooperative', cardsToWin: 5, tokensEnabled: true };
+    const config: RoundConfig = { mode: 'cooperative', cardsToWin: 5, turnSeconds: 60, tokensEnabled: true };
     const { room: initedRoom } = initRound(room, config, deck);
     return {
       ...initedRoom,
@@ -921,7 +922,7 @@ describe('applySkip — tokensEnabled guard', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode: 'original', cardsToWin: 6, tokensEnabled: false };
+    const config: RoundConfig = { mode: 'original', cardsToWin: 6, turnSeconds: 60, tokensEnabled: false };
     const { room: started } = initRound(room, config, deck);
     expect(() => applySkip(started, 'p1')).toThrow('Tokens are disabled');
   });
@@ -932,7 +933,7 @@ describe('applyBuy — tokensEnabled guard', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = addPlayer(room, 'p2', 'Bob');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode: 'original', cardsToWin: 6, tokensEnabled: false };
+    const config: RoundConfig = { mode: 'original', cardsToWin: 6, turnSeconds: 60, tokensEnabled: false };
     const { room: started } = initRound(room, config, deck);
     // Give player 3 tokens and set up a place-phase turn
     const withTurn: Room = {
@@ -1040,7 +1041,7 @@ describe('isActiveParticipant', () => {
     room = joinTeam(room, 'teamA', 'p2');
     room = createTeam(room, 'teamB', 'Beta', 'p3');
     const deck = Array.from({ length: 20 }, (_, i) => makeCard(`t${i}`, 1970 + i));
-    const config: RoundConfig = { mode: 'original', cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode: 'original', cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
     const { room: started } = initRound(room, config, deck);
     const withTurn = {
       ...started,
@@ -1069,7 +1070,7 @@ describe('resolveFlip — Pro/Expert naming requirement', () => {
   ): Room {
     const room = createRoom('player1', 'Alice', 'Test Room');
     const roomWithPlayer = addPlayer(room, 'player2', 'Bob');
-    const config: RoundConfig = { mode, cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode, cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
 
     const deck = [
       ...cards,
@@ -1207,7 +1208,7 @@ describe('initRound with teams', () => {
     room = createTeam(room, 'teamA', 'Alpha', 'p1');
     room = createTeam(room, 'teamB', 'Beta', 'p2');
     const deck = Array.from({ length: 20 }, (_, i) => makeCard(`t${i}`, 1970 + i));
-    const config: RoundConfig = { mode: 'original', cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode: 'original', cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
     const { room: started } = initRound(room, config, deck);
     expect(started.activeRound!.turnOrder).toEqual(expect.arrayContaining(['teamA', 'teamB']));
     expect(started.activeRound!.timelines['teamA']).toBeDefined();
@@ -1219,7 +1220,7 @@ describe('initRound with teams', () => {
     let room = createRoom('p1', 'Alice', 'Test');
     room = createTeam(room, 'teamA', 'Alpha', 'p1');
     const deck = Array.from({ length: 15 }, (_, i) => makeCard(`t${i}`, 1980 + i));
-    const config: RoundConfig = { mode: 'original', cardsToWin: 6, tokensEnabled: true };
+    const config: RoundConfig = { mode: 'original', cardsToWin: 6, turnSeconds: 60, tokensEnabled: true };
     expect(() => initRound(room, config, deck)).toThrow('Need at least 2 teams');
   });
 });

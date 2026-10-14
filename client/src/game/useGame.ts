@@ -43,7 +43,7 @@ export interface GameState {
   addLocalPlayer: (name: string) => void;
   removeLocalPlayer: (id: string) => void;
   leaveRoom: () => void;
-  startRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => void;
+  startRound: (mode: GameMode, playlistLabel?: string, cardsToWin?: number, turnSeconds?: number | null, tokensEnabled?: boolean) => void;
   // Turn actions take the acting player's id (main player or a local hot-seat player)
   placeCard: (actorId: string, position: number) => void;
   challengeCard: (actorId: string) => void;
@@ -406,8 +406,8 @@ export function useGame(): GameState {
     setTimeout(() => window.location.reload(), 200);
   }, []);
 
-  const startRound = useCallback((mode: GameMode, playlistLabel?: string, cardsToWin?: number, tokensEnabled?: boolean) => {
-    socket.emit('round:start', { mode, playlistLabel, cardsToWin, tokensEnabled });
+  const startRound = useCallback((mode: GameMode, playlistLabel?: string, cardsToWin?: number, turnSeconds?: number | null, tokensEnabled?: boolean) => {
+    socket.emit('round:start', { mode, playlistLabel, cardsToWin, turnSeconds, tokensEnabled });
   }, []);
 
   const placeCard = useCallback((actorId: string, position: number) => {

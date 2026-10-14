@@ -74,7 +74,8 @@ Before each round, the room owner sets:
 | Song source | Spotify playlist URL or genre/theme | — |
 | Game mode | Original / Pro / Expert / Cooperative | Original |
 | Tokens enabled | Yes / No | Yes |
-| Cards needed to win | 1–6 | 6 |
+| Cards needed to win | 1 or more (no upper limit; an empty deck ends the round) | 6 |
+| Time per turn | 30 / 60 / 90 / 120 / 180 s, or no limit — auto-skip if the active player hasn't placed | 60 s |
 
 ### 1.5 Gameplay — Hitster Rules (Digital)
 

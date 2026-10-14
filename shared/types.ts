@@ -52,7 +52,8 @@ export interface Timeline {
 export interface RoundConfig {
   playlistLabel?: string;     // Spotify playlist label / genre tag
   mode: GameMode;
-  cardsToWin: number;         // default 6, max 6
+  cardsToWin: number;         // default 6, min 1, no max
+  turnSeconds: number | null; // time to place before auto-skip; null = no limit
   tokensEnabled: boolean;     // false disables all token mechanics
 }
 
@@ -174,8 +175,8 @@ export interface ServerToClientEvents {
     /** Server Date.now() when emitted — clients schedule playAt relative to this (clock skew). */
     serverNow: number;
     timelineLength: number; // number of cards already on the active player's timeline
-    /** Unix ms — auto-skip if still in place phase */
-    turnEndsAt: number;
+    /** Unix ms — auto-skip if still in place phase; null when the round has no time limit */
+    turnEndsAt: number | null;
   }) => void;
 
   /** Broadcast after active player places their card */
@@ -230,7 +231,7 @@ export interface ClientToServerEvents {
   'room:leave': () => void;
 
   /** Owner starts the round */
-  'round:start': (data: { playlistLabel?: string; mode: GameMode; cardsToWin?: number; tokensEnabled?: boolean }) => void;
+  'round:start': (data: { playlistLabel?: string; mode: GameMode; cardsToWin?: number; turnSeconds?: number | null; tokensEnabled?: boolean }) => void;
 
   /** Active player places their card at position (0 = before all, n = after all) */
   'turn:place': (data: { position: number }) => void;
