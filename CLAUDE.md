@@ -125,13 +125,15 @@ State is a `Map<string, Room>` held in memory. Do not introduce a database, Redi
 
 ### 5. No user authentication
 Players are identified by a `sessionId` (UUID generated client-side on first visit, stored in `sessionStorage`) and enter only a name. No email, no login, no JWT, no cookies. The room owner is simply the player whose `sessionId` created the room.
+The single exception is the optional **Connect Spotify** for full-song playback (rule 6) — it links a Spotify account to the *room*, not a player identity.
 
 ### 6. Spotify integration
-- Use **Client Credentials Flow** only. Never use Authorization Code Flow.
+- Use **Client Credentials Flow** for everything except full-song playback. The only Authorization Code Flow is the room owner's optional Spotify Connect link in `server/src/spotify/connect.ts` (Premium, playback scopes only); its tokens stay server-side and never enter `Room` state or reach a client.
 - The token is fetched server-side and refreshed automatically before expiry.
 - The app is in Spotify development mode (tiny request quota, many endpoints blocked). Read track data from the public embed pages where possible and keep Web API calls rare and cached — see `docs/REQUIREMENTS.md` §2.3. Test against the live API sparingly: exhausting the quota blocks the app (incl. production) for hours.
 - Preview MP3s come from `track.preview_url` or, when null, the embed page; tracks without any preview resolve per turn and show "Preview unavailable".
 - Never expose `SPOTIFY_CLIENT_ID` or `SPOTIFY_CLIENT_SECRET` to the client.
+- Full songs (lobby **Audio** setting): the server plays each turn's track on one Spotify Connect device (`turn:started.speaker` set, `playAt` 0); every browser stays silent. Failure → that turn falls back to previews.
 
 ### 7. Audio playback sync
 When a turn starts, the server emits:
@@ -200,6 +202,6 @@ chore: add shared types for token events
 - Do not add user accounts or login flows
 - Do not stream audio from the server
 - Do not put game logic in the client
-- Do not use Spotify Authorization Code Flow or expose Spotify secrets to the client
+- Do not use Spotify Authorization Code Flow outside `spotify/connect.ts`, and never expose Spotify secrets or user tokens to the client
 - Do not add features not in REQUIREMENTS.md without confirming first
 - Do not use `any` in TypeScript — define the proper type in `shared/types.ts`

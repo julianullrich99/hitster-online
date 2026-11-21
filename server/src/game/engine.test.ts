@@ -25,6 +25,10 @@ import {
   endGame,
   findPlayerByName,
   removePlayer,
+  setAudioMode,
+  setSpotifyAccount,
+  setSpotifyDevice,
+  spotifySpeaker,
 } from './engine';
 import type { Room, Card, RoundConfig } from '../../../shared/types';
 
@@ -1319,5 +1323,44 @@ describe('removePlayer', () => {
     const updated = removePlayer({ ...started, status: 'round_active' }, 'p2');
     expect(updated.players['p2'].isConnected).toBe(false);
     expect(updated.activeRound?.timelines['p2']).toBeDefined();
+  });
+});
+
+describe('audio output', () => {
+  it('new rooms play previews on every device', () => {
+    const room = createRoom('p1', 'Alice', 'T');
+    expect(room.audio).toEqual({ mode: 'previews' });
+    expect(spotifySpeaker(room)).toBeNull();
+  });
+
+  it('refuses full songs without a linked Spotify account', () => {
+    const room = createRoom('p1', 'Alice', 'T');
+    expect(() => setAudioMode(room, 'spotify')).toThrow('Connect a Spotify account first');
+  });
+
+  it('linking switches to Spotify, but no speaker until a device is picked', () => {
+    const linked = setSpotifyAccount(createRoom('p1', 'Alice', 'T'), 'alice');
+    expect(linked.audio.mode).toBe('spotify');
+    expect(spotifySpeaker(linked)).toBeNull();
+
+    const withDevice = setSpotifyDevice(linked, 'dev1', "Alice's iPhone");
+    expect(spotifySpeaker(withDevice)).toEqual({ deviceId: 'dev1', deviceName: "Alice's iPhone" });
+  });
+
+  it('switching back to previews keeps the link and device', () => {
+    const room = setSpotifyDevice(setSpotifyAccount(createRoom('p1', 'Alice', 'T'), 'alice'), 'dev1', 'Phone');
+    const previews = setAudioMode(room, 'previews');
+    expect(spotifySpeaker(previews)).toBeNull();
+    expect(previews.audio.spotify?.deviceId).toBe('dev1');
+    expect(spotifySpeaker(setAudioMode(previews, 'spotify'))?.deviceId).toBe('dev1');
+  });
+
+  it('unlinking drops the account and falls back to previews', () => {
+    const room = setSpotifyDevice(setSpotifyAccount(createRoom('p1', 'Alice', 'T'), 'alice'), 'dev1', 'Phone');
+    expect(setSpotifyAccount(room, null).audio).toEqual({ mode: 'previews' });
+  });
+
+  it('picking a device needs a linked account', () => {
+    expect(() => setSpotifyDevice(createRoom('p1', 'Alice', 'T'), 'dev1', 'Phone')).toThrow();
   });
 });

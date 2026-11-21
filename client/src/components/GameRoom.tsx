@@ -7,7 +7,7 @@ import {
   TURN_SECONDS_DEFAULT,
   TURN_SECONDS_OPTIONS,
 } from '../../../shared/constants';
-import type { Room, Card, CardHidden, GameMode, Player, Team } from '../../../shared/types';
+import type { Room, Card, CardHidden, GameMode, Player, Team, AudioMode, SpotifyDevice } from '../../../shared/types';
 import type { LocalPlayer } from '../game/useGame';
 import TrackPreviewModal from './TrackPreviewModal';
 import { PlaylistAutocomplete } from './PlaylistAutocomplete';
@@ -211,7 +211,7 @@ function PlayerList({
 
 // ── AudioPlayer ───────────────────────────────────────────────────────────────
 
-type PlaybackStatus = 'idle' | 'resolving' | 'loading' | 'playing' | 'blocked' | 'ended' | 'unavailable';
+type PlaybackStatus = 'idle' | 'resolving' | 'loading' | 'playing' | 'blocked' | 'ended' | 'unavailable' | 'speaker';
 
 const PREVIEW_SECONDS = 30;
 
@@ -219,6 +219,7 @@ interface AudioPlayerProps {
   previewUrl: string | null;
   streamUrl: string | null;
   playAt: number | null;
+  speaker: { deviceName: string } | null;
   currentCard: CardHidden | null;
   revealedCard: Card | null;
   isFlipped: boolean;
@@ -229,6 +230,7 @@ function AudioPlayer({
   previewUrl,
   streamUrl,
   playAt,
+  speaker,
   currentCard,
   revealedCard,
   isFlipped,
@@ -268,6 +270,11 @@ function AudioPlayer({
   // Resolve MP3 (API streamUrl or embed HTML) and start synced playback at playAt.
   // Uses the shared, gesture-unlocked element so timer-started play() isn't blocked.
   useEffect(() => {
+    // Full song plays on the room's Spotify device — this device stays silent
+    if (speaker && currentCard) {
+      setPlaybackStatus('speaker');
+      return;
+    }
     if (!previewUrl || !playAt || !currentCard) {
       setPlaybackStatus('idle');
       return;
@@ -362,9 +369,10 @@ function AudioPlayer({
       setProgress(0);
       setPlaybackStatus('idle');
     };
-  }, [previewUrl, streamUrl, playAt, currentCard?.trackId]);
+  }, [previewUrl, streamUrl, playAt, currentCard?.trackId, speaker?.deviceName]);
 
   const statusMessage = (() => {
+    if (playbackStatus === 'speaker' && speaker) return `🔊 Playing on ${speaker.deviceName}`;
     if (playbackStatus === 'resolving' || playbackStatus === 'loading') return 'Loading preview…';
     if (playbackStatus === 'unavailable') return 'Preview unavailable for this track.';
     if (playbackStatus === 'blocked') return 'Your browser blocked autoplay.';
@@ -568,6 +576,126 @@ function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, onEndGam
   );
 }
 
+// ── Audio settings (lobby) ────────────────────────────────────────────────────
+
+/** Owner-side Spotify controls, passed down from useGame */
+export interface AudioControls {
+  spotifyDevices: SpotifyDevice[] | null;
+  onSetAudioMode: (mode: AudioMode) => void;
+  onConnectSpotify: () => void;
+  onListSpotifyDevices: () => void;
+  onSelectSpotifyDevice: (deviceId: string) => void;
+  onUnlinkSpotify: () => void;
+}
+
+const DEVICE_ICONS: Record<string, string> = {
+  Smartphone: '📱', Computer: '💻', Speaker: '🔈', TV: '📺', Tablet: '📱', CastAudio: '🔈', CastVideo: '📺',
+};
+
+function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boolean; controls: AudioControls }) {
+  const { mode, spotify } = room.audio;
+  const { spotifyDevices, onListSpotifyDevices } = controls;
+  const linked = Boolean(spotify);
+
+  // Load the device list once the account is linked
+  useEffect(() => {
+    if (isOwner && linked && spotifyDevices === null) onListSpotifyDevices();
+  }, [isOwner, linked, spotifyDevices, onListSpotifyDevices]);
+
+  if (!isOwner) {
+    return mode === 'spotify' && spotify?.deviceName ? (
+      <div className="lobby-audio-note" data-testid="audio-note">
+        🔊 Full songs play on <strong>{spotify.deviceName}</strong> via Spotify — your device stays silent.
+      </div>
+    ) : null;
+  }
+
+  return (
+    <div className="lobby-config-section" data-testid="audio-settings">
+      <div className="lobby-config-label">Audio</div>
+      <div className="lobby-mode-grid">
+        {([
+          { value: 'previews', label: '30s previews', desc: 'Plays on every device' },
+          { value: 'spotify', label: 'Full songs', desc: 'One Spotify device (Premium)' },
+        ] as const).map(o => (
+          <label
+            key={o.value}
+            className={`lobby-mode-option${mode === o.value ? ' selected' : ''}`}
+            data-testid={`audio-option-${o.value}`}
+          >
+            <input
+              type="radio"
+              name="audio-mode"
+              value={o.value}
+              checked={mode === o.value}
+              onChange={() => (o.value === 'spotify' && !linked ? controls.onConnectSpotify() : controls.onSetAudioMode(o.value))}
+              style={{ display: 'none' }}
+            />
+            <div className="lobby-mode-name">{o.label}</div>
+            <div className="lobby-mode-desc">{o.desc}</div>
+          </label>
+        ))}
+      </div>
+
+      {!linked && (
+        <div className="lobby-local-hint">
+          Full songs play through Spotify Connect on one device of your choice (your phone, TV
+          or speaker). Everyone else&apos;s device stays silent.{' '}
+          <button type="button" className="lobby-team-btn" onClick={controls.onConnectSpotify} data-testid="connect-spotify-btn">
+            Connect Spotify
+          </button>
+        </div>
+      )}
+
+      {linked && spotify && mode === 'spotify' && (
+        <>
+          <div className="lobby-local-hint">
+            Connected as <strong>{spotify.accountName}</strong>. Open the Spotify app on the device
+            that should play, then pick it here.
+          </div>
+          <div className="lobby-teams-list">
+            {(spotifyDevices ?? []).map(d => (
+              <div
+                key={d.id}
+                className={`lobby-team-row${d.id === spotify.deviceId ? ' my-team' : ''}`}
+                data-testid="spotify-device-row"
+              >
+                <div className="lobby-team-name">
+                  {DEVICE_ICONS[d.type] ?? '🎵'} {d.name}
+                </div>
+                {d.id === spotify.deviceId ? (
+                  <span className="lobby-team-member">Playing here</span>
+                ) : (
+                  <button type="button" className="lobby-team-btn" onClick={() => controls.onSelectSpotifyDevice(d.id)}>
+                    Use
+                  </button>
+                )}
+              </div>
+            ))}
+            {spotifyDevices?.length === 0 && (
+              <div className="lobby-local-hint">No devices found — open Spotify on your phone and refresh.</div>
+            )}
+          </div>
+          <div className="lobby-create-team-row">
+            <button type="button" className="lobby-team-btn" onClick={onListSpotifyDevices} data-testid="refresh-devices-btn">
+              ↻ Refresh devices
+            </button>
+            <button type="button" className="lobby-team-btn leave" onClick={controls.onUnlinkSpotify}>
+              Disconnect Spotify
+            </button>
+          </div>
+          {!spotify.deviceId && (
+            <div className="server-error-msg">Pick a device — until then turns use previews.</div>
+          )}
+          <div className="lobby-local-hint">
+            Tip: the Spotify app shows the song title — put the phone face down or out of sight.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Lobby screen ──────────────────────────────────────────────────────────────
 
 const MODES: { value: GameMode; label: string; desc: string }[] = [
@@ -593,9 +721,10 @@ interface LobbyScreenProps {
   localPlayers: LocalPlayer[];
   onAddLocalPlayer: (name: string) => void;
   onRemoveLocalPlayer: (id: string) => void;
+  audioControls: AudioControls;
 }
 
-function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, onLeaveTeam, onLeave, socketError, onPreviewPlaylist, onClearPlaylistPreview, playlistPreviewCards, playlistPreviewLoading, localPlayers, onAddLocalPlayer, onRemoveLocalPlayer }: LobbyScreenProps) {
+function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, onLeaveTeam, onLeave, socketError, onPreviewPlaylist, onClearPlaylistPreview, playlistPreviewCards, playlistPreviewLoading, localPlayers, onAddLocalPlayer, onRemoveLocalPlayer, audioControls }: LobbyScreenProps) {
   const isOwner = room.ownerId === sessionId;
   const players = Object.values(room.players);
   const [playlistLabel, setPlaylistLabel] = useState('');
@@ -766,6 +895,8 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
         </>
       )}
 
+      <AudioSettings room={room} isOwner={isOwner} controls={audioControls} />
+
       {/* ── Hot-seat: more players on this device ── */}
       <div className="lobby-teams-section" data-testid="local-players-section">
         <div className="lobby-config-label">Players on this device</div>
@@ -933,6 +1064,7 @@ export interface GameRoomProps {
   previewUrl: string | null;
   streamUrl: string | null;
   playAt: number | null;
+  speaker: { deviceName: string } | null;
   timelineLength: number;
   lastFlip: {
     card: Card;
@@ -965,6 +1097,7 @@ export interface GameRoomProps {
   onClearPlaylistPreview: () => void;
   playlistPreviewCards: Card[] | null;
   playlistPreviewLoading: boolean;
+  audioControls: AudioControls;
 }
 
 export default function GameRoom({
@@ -974,6 +1107,7 @@ export default function GameRoom({
   previewUrl,
   streamUrl,
   playAt,
+  speaker,
   lastFlip,
   roundEnded,
   sessionId: primaryId,
@@ -997,6 +1131,7 @@ export default function GameRoom({
   onClearPlaylistPreview,
   playlistPreviewCards,
   playlistPreviewLoading,
+  audioControls,
 }: GameRoomProps) {
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [showFlipResult, setShowFlipResult] = useState(false);
@@ -1228,6 +1363,7 @@ export default function GameRoom({
           localPlayers={localPlayers}
           onAddLocalPlayer={onAddLocalPlayer}
           onRemoveLocalPlayer={onRemoveLocalPlayer}
+          audioControls={audioControls}
         />
       </div>
     );
@@ -1293,6 +1429,7 @@ export default function GameRoom({
             previewUrl={previewUrl}
             streamUrl={streamUrl}
             playAt={playAt}
+            speaker={speaker}
             currentCard={currentCard}
             revealedCard={revealedCard}
             isFlipped={isFlipped}

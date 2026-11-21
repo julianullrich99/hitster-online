@@ -44,6 +44,7 @@ import {
   isSpotifyTrackPageUrl,
   isValidSpotifyTrackId,
 } from './spotify/embedPreview';
+import { SpotifyConnect } from './spotify/connect';
 import { RoomStore } from './rooms/store';
 import * as engine from './game/engine';
 import * as gameLog from './game/gameLog';
@@ -67,6 +68,10 @@ app.use(express.json());
 
 const store = new RoomStore();
 const spotify = createSpotifyClient();
+const spotifyConnect = new SpotifyConnect(
+  process.env.SPOTIFY_CLIENT_ID ?? '',
+  process.env.SPOTIFY_CLIENT_SECRET ?? '',
+);
 
 // In TEST_MODE the challenge window is much shorter to keep tests fast
 const CHALLENGE_WINDOW_MS =
@@ -108,6 +113,9 @@ function placeTimeoutMs(room: Room): number | null {
 // roomCode → place-phase turn timer (listen + place)
 const placeTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+// roomCode → Spotify device playing the current turn's full song (absent = previews this turn)
+const turnSpeakers = new Map<string, { deviceName: string }>();
+
 // playerId → pending disconnect-skip timer (so it can be cancelled on reconnect)
 const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -135,6 +143,67 @@ app.get('/api/spotify/tracks/:trackId/embed-preview', async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to resolve embed preview';
     res.status(502).json({ error: message });
+  }
+});
+
+// ── Spotify Connect (full songs on one device) ────────────────────────────────
+// The room owner links a Premium account; tokens stay on the server (spotify/connect.ts).
+
+function spotifyRedirectUri(req: express.Request): string {
+  if (process.env.SPOTIFY_REDIRECT_URI) return process.env.SPOTIFY_REDIRECT_URI;
+  const proto = (req.get('x-forwarded-proto') ?? req.protocol).split(',')[0].trim();
+  return `${proto}://${req.get('host')}/api/spotify/connect/callback`;
+}
+
+function connectResultPage(res: express.Response, status: number, message: string): void {
+  const safe = message.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
+  res.status(status).type('html').send(`<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Hitster · Spotify</title>
+<style>body{font-family:system-ui,sans-serif;background:#0b0b12;color:#e5e7eb;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px;text-align:center}</style>
+</head><body><div><p style="font-size:18px">${safe}</p><p style="color:#9ca3af">You can close this tab and go back to the game.</p></div>
+<script>setTimeout(function(){window.close()},1500)</script></body></html>`);
+}
+
+app.get('/api/spotify/connect/login', (req, res) => {
+  const roomCode = String(req.query.room ?? '').toUpperCase();
+  const sessionId = String(req.query.session ?? '');
+  const room = store.get(roomCode);
+  if (!spotifyConnect.configured || process.env.TEST_MODE === 'true') {
+    connectResultPage(res, 503, 'Spotify is not configured on this server.');
+    return;
+  }
+  if (!room || room.ownerId !== sessionId) {
+    connectResultPage(res, 403, 'Only the room owner can connect Spotify.');
+    return;
+  }
+  res.redirect(spotifyConnect.beginLogin(roomCode, sessionId, spotifyRedirectUri(req)));
+});
+
+app.get('/api/spotify/connect/callback', async (req, res) => {
+  const login = spotifyConnect.takeLogin(String(req.query.state ?? ''));
+  if (!login) {
+    connectResultPage(res, 400, 'This Spotify login expired. Try again from the lobby.');
+    return;
+  }
+  if (req.query.error || !req.query.code) {
+    connectResultPage(res, 400, 'Spotify login was cancelled.');
+    return;
+  }
+  try {
+    const accountName = await spotifyConnect.completeLogin(login, String(req.query.code));
+    const room = store.get(login.roomCode);
+    if (!room) {
+      spotifyConnect.unlink(login.roomCode);
+      connectResultPage(res, 404, 'The room no longer exists.');
+      return;
+    }
+    const updated = engine.setSpotifyAccount(room, accountName);
+    store.set(updated);
+    io.to(room.code).emit('room:updated', updated);
+    connectResultPage(res, 200, `Spotify connected as ${accountName}.`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Spotify login failed';
+    connectResultPage(res, 400, message);
   }
 });
 
@@ -180,6 +249,10 @@ function clearPlaceTurnTimer(roomCode: string): void {
 }
 
 function purgeRoomRuntime(roomCode: string): void {
+  const room = store.get(roomCode);
+  if (room) pauseSpeaker(room);
+  spotifyConnect.unlink(roomCode);
+  turnSpeakers.delete(roomCode);
   clearPlaceTurnTimer(roomCode);
   clearChallengeTimer(roomCode);
   clearFlipAdvanceTimer(roomCode);
@@ -281,6 +354,39 @@ async function resolveTurnStreamUrl(card: {
   }
 }
 
+/** Stop the full song on the room's Spotify device, if one is playing. */
+function pauseSpeaker(room: Room): void {
+  turnSpeakers.delete(room.code);
+  const deviceId = room.audio.spotify?.deviceId;
+  if (deviceId) void spotifyConnect.pause(room.code, deviceId);
+}
+
+/**
+ * Start the turn's full song on the room's Spotify device. Returns the device for the
+ * turn:started payload, or null when the turn should use previews (mode off, or Spotify failed).
+ */
+async function playOnSpeaker(roomCode: string, card: Card): Promise<{ deviceName: string } | null> {
+  turnSpeakers.delete(roomCode);
+  const room = store.get(roomCode);
+  const speaker = room ? engine.spotifySpeaker(room) : null;
+  if (!room || !speaker) return null;
+  try {
+    await spotifyConnect.play(roomCode, speaker.deviceId, card.trackId);
+    const result = { deviceName: speaker.deviceName };
+    turnSpeakers.set(roomCode, result);
+    return result;
+  } catch (err) {
+    console.warn(`[Spotify Connect] play failed in ${roomCode}:`, err);
+    const latest = store.get(roomCode);
+    if (latest) {
+      const withLog = gameLog.logSpotifyFallback(latest, speaker.deviceName);
+      store.set(withLog);
+      io.to(roomCode).emit('room:updated', withLog);
+    }
+    return null;
+  }
+}
+
 type TurnStartedPayload = Parameters<ServerToClientEvents['turn:started']>[0];
 
 function buildTurnStartedPayload(
@@ -290,6 +396,7 @@ function buildTurnStartedPayload(
   streamUrl: string | null,
   turnEndsAt: number | null,
   playAt: number,
+  speaker: { deviceName: string } | null,
 ): TurnStartedPayload {
   return {
     activePlayerId: activeId,
@@ -300,6 +407,7 @@ function buildTurnStartedPayload(
     serverNow: Date.now(),
     timelineLength: engine.timelineLength(room, activeId),
     turnEndsAt,
+    speaker,
   };
 }
 
@@ -319,7 +427,8 @@ async function emitTurnSnapshot(
   if (!pendingCards.get(room.code)) return;
 
   const activeId = ar.currentTurn.activeId;
-  const streamUrl = await resolveTurnStreamUrl(ar.currentCard);
+  const speaker = turnSpeakers.get(room.code) ?? null;
+  const streamUrl = speaker ? null : await resolveTurnStreamUrl(ar.currentCard);
   const inPlacePhase = ar.currentTurn.phase === 'place';
 
   socket.emit(
@@ -330,7 +439,8 @@ async function emitTurnSnapshot(
       ar.currentCard,
       streamUrl,
       turnEndsAtFor(room),
-      inPlacePhase ? Date.now() + 600 : 0,
+      inPlacePhase && !speaker ? Date.now() + 600 : 0,
+      speaker,
     ),
   );
 }
@@ -368,17 +478,21 @@ async function startTurn(roomCode: string): Promise<void> {
   }
 
   const { card, hidden: baseHidden, remaining } = engine.drawCard(deck);
-  const streamUrl = await resolveTurnStreamUrl(card);
+  const speaker = await playOnSpeaker(roomCode, card);
+  const streamUrl = speaker ? null : await resolveTurnStreamUrl(card);
   const hidden = { ...baseHidden, streamUrl };
 
   liveDecks.set(roomCode, remaining);
   pendingCards.set(roomCode, card);
   pendingChallenges.set(roomCode, []);
 
+  // Re-read: the Spotify fallback may have appended a log line while we awaited
+  const latest = store.get(roomCode);
+  if (!latest?.activeRound) return;
   const updatedRoom = {
-    ...room,
+    ...latest,
     activeRound: {
-      ...room.activeRound,
+      ...latest.activeRound,
       deckRemaining: remaining.length,
       currentCard: hidden,
       currentTurn: {
@@ -395,7 +509,7 @@ async function startTurn(roomCode: string): Promise<void> {
 
   io.to(roomCode).emit(
     'turn:started',
-    buildTurnStartedPayload(room, activeId, hidden, streamUrl, turnEndsAt, Date.now() + 600),
+    buildTurnStartedPayload(room, activeId, hidden, streamUrl, turnEndsAt, speaker ? 0 : Date.now() + 600, speaker),
   );
 }
 
@@ -465,6 +579,7 @@ function resolveAndAdvance(roomCode: string): void {
       roundHistory: [...flippedWithLog.roundHistory, summary],
     };
     store.set(finalRoom);
+    pauseSpeaker(finalRoom);
     io.to(roomCode).emit('room:updated', finalRoom);
     io.to(roomCode).emit('round:ended', { winnerId: winnerId ?? null, summary });
     return;
@@ -892,7 +1007,71 @@ io.on('connection', (socket) => {
     if (room.ownerId !== sessionId) { socket.emit('error', 'Only the room owner can end the game'); return; }
     const endedRoom = engine.endGame(room);
     store.set(endedRoom);
+    pauseSpeaker(endedRoom);
     io.to(session.roomCode).emit('room:updated', endedRoom);
+  });
+
+  // ------------------------------------------------------------------
+  // audio:* — owner picks previews on every device vs. full songs via Spotify
+  // ------------------------------------------------------------------
+  const ownedRoom = (): Room | null => {
+    const session = socketSession.get(socket.id);
+    const room = session ? store.get(session.roomCode) : undefined;
+    if (!room) return null;
+    if (room.ownerId !== sessionId) {
+      socket.emit('error', 'Only the room owner can change the audio');
+      return null;
+    }
+    return room;
+  };
+
+  socket.on('audio:set-mode', (data) => {
+    const room = ownedRoom();
+    if (!room) return;
+    try {
+      const updated = engine.setAudioMode(room, data.mode === 'spotify' ? 'spotify' : 'previews');
+      if (updated.audio.mode === 'previews') pauseSpeaker(updated);
+      store.set(updated);
+      io.to(room.code).emit('room:updated', updated);
+    } catch (err) {
+      socket.emit('error', err instanceof Error ? err.message : 'Could not change audio');
+    }
+  });
+
+  socket.on('audio:list-devices', async () => {
+    const room = ownedRoom();
+    if (!room) return;
+    try {
+      socket.emit('audio:devices', { devices: await spotifyConnect.listDevices(room.code) });
+    } catch (err) {
+      socket.emit('error', err instanceof Error ? err.message : 'Could not load Spotify devices');
+    }
+  });
+
+  socket.on('audio:select-device', async (data) => {
+    const room = ownedRoom();
+    if (!room) return;
+    try {
+      const device = (await spotifyConnect.listDevices(room.code)).find(d => d.id === data.deviceId);
+      if (!device) { socket.emit('error', 'That Spotify device is not available — open Spotify on it and refresh'); return; }
+      const latest = store.get(room.code);
+      if (!latest) return;
+      const updated = engine.setSpotifyDevice(latest, device.id, device.name);
+      store.set(updated);
+      io.to(room.code).emit('room:updated', updated);
+    } catch (err) {
+      socket.emit('error', err instanceof Error ? err.message : 'Could not select the Spotify device');
+    }
+  });
+
+  socket.on('audio:unlink', () => {
+    const room = ownedRoom();
+    if (!room) return;
+    pauseSpeaker(room);
+    spotifyConnect.unlink(room.code);
+    const updated = engine.setSpotifyAccount(room, null);
+    store.set(updated);
+    io.to(room.code).emit('room:updated', updated);
   });
 
   // ------------------------------------------------------------------

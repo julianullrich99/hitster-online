@@ -57,6 +57,9 @@ Appends structured lines to `activeRound.gameLog` (placements, challenges, flips
 ### `server/src/rooms/store.ts`
 Thin wrapper around `Map<string, Room>`. Provides `get`, `set`, `delete`, `getAll`, `getSummaries`. No logic beyond storage and projection to `RoomSummary`.
 
+### `server/src/spotify/connect.ts`
+Full-song playback via Spotify Connect (REQUIREMENTS §2.4). The one place with a *user* token: Authorization Code Flow for the room owner's Premium account, started by `GET /api/spotify/connect/login?room&session` and finished at `/api/spotify/connect/callback`. Tokens live in this module per room code and are refreshed automatically; `Room.audio` only carries the account and device names. `index.ts` calls `play()` in `startTurn` when `engine.spotifySpeaker(room)` returns a device and sends `speaker` in `turn:started` so clients stay silent; on failure the turn falls back to previews.
+
 ### `server/src/spotify/client.ts`
 Handles Spotify Client Credentials auth (auto-refreshes token before expiry) and deck building. Returns typed `Card[]`. Because the app is in Spotify development mode, track data mostly comes from the public embed pages (`embedPreview.ts`) and the Web API is only used sparingly (playlist search, year search, original-year lookups) behind a TTL cache and a quota circuit breaker — see REQUIREMENTS §2.3. Label parsing and title cleanup live in `labels.ts` (pure). `TEST_MODE=true` substitutes mock tracks from `mockTracks.ts` so tests run without credentials.
 
@@ -182,7 +185,7 @@ Hot-seat: the client opens one socket per local player. `useGame` listens for ro
 3. **State is immutable at the function level.** Engine functions return new objects; they do not mutate arguments.
 4. **Timers live only in `index.ts`.** Engine functions are synchronous and timer-free.
 5. **No database.** `RoomStore` is an in-memory Map. Server restart clears all state. This is intentional.
-6. **No Spotify secrets on the client.** The client never calls Spotify directly.
+6. **No Spotify secrets or tokens on the client.** The client never calls Spotify directly; the Spotify Connect user token stays in `spotify/connect.ts`.
 
 ---
 

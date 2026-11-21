@@ -76,6 +76,7 @@ Before each round, the room owner sets:
 | Tokens enabled | Yes / No | Yes |
 | Cards needed to win | 1 or more (no upper limit; an empty deck ends the round) | 6 |
 | Time per turn | 30 / 60 / 90 / 120 / 180 s, or no limit — auto-skip if the active player hasn't placed | 60 s |
+| Audio | 30s previews on every device, or full songs on one Spotify device (see §2.4) | Previews |
 
 ### 1.5 Gameplay — Hitster Rules (Digital)
 
@@ -143,7 +144,7 @@ Each turn has three phases:
 - Acceptable sync variance: ≤500ms between clients.
 
 ### 2.3 Spotify Integration
-- Server authenticates with Spotify via **Client Credentials Flow** (no user login).
+- Server authenticates with Spotify via **Client Credentials Flow** (no user login) for everything except full-song playback (§2.4).
 - The app runs in Spotify **development mode**: no `/recommendations`, no playlist contents via the API, no batch endpoints, search `limit` ≤ 10, no popularity/genres, and a small request quota (exceeding it blocks the app for hours).
 - Deck sources (all return title, artist(s), release year, album art and — via the embed page — the 30s preview MP3):
   - **Decade** label (`80s`, `80er`, `1990s`, `1975-1985`, `1985`): Spotify's editorial "All Out 50s…2010s" playlists, read from the public embed pages — no API quota. API `year:` search fills gaps (e.g. 2020s).
@@ -157,6 +158,15 @@ Each turn has three phases:
 ### 2.4 Audio Playback
 - The `preview_url` is a publicly accessible 30-second MP3 on Spotify's CDN.
 - Client plays it directly in a `<audio>` element. No server-side audio streaming.
+
+#### Full songs via Spotify Connect (optional, couch play)
+- The room owner can switch the room's audio (lobby **Audio** setting) from *30s previews* to *Full songs*.
+- Full songs need the owner to **Connect Spotify** once: Authorization Code Flow (scopes `user-read-private user-read-playback-state user-modify-playback-state`) with a **Premium** account. This is the only user login in the app; other players still join by name only.
+- The owner picks one Spotify Connect device of that account (phone app, desktop app, TV, speaker). Each turn the server tells Spotify to play the song from the start on that device; every browser in the room stays silent and shows "Playing on <device>". The song keeps playing through the flip and is replaced by the next turn's song; it pauses when the round or game ends.
+- Tokens stay on the server, in memory, per room (never in `Room` state, never sent to a client). Unlinking or deleting the room drops them.
+- If playback fails (device offline, Premium lapsed, quota), that turn falls back to previews on every device and the game log says so.
+- The Spotify app on the playing device shows the song title — the lobby tells the owner to keep it out of sight.
+- Spotify development mode: only accounts added under *User Management* in the Spotify dashboard can log in (max. 5), and the app's redirect URI (`<origin>/api/spotify/connect/callback`, HTTPS or `http://127.0.0.1`) must be registered there.
 
 ### 2.5 Game State
 - All game state is server-side and broadcast via WebSocket. Clients are stateless renderers.

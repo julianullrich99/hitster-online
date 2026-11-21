@@ -7,7 +7,8 @@ import {
   setPrimarySessionId,
   type GameSocket,
 } from '../socket/client';
-import type { Room, Card, CardHidden, GameMode } from '../../../shared/types';
+import type { Room, Card, CardHidden, GameMode, AudioMode, SpotifyDevice } from '../../../shared/types';
+import { getServerUrl } from '../config';
 
 /** Extra player sharing this device (hot-seat). Has its own socket and server identity. */
 export interface LocalPlayer {
@@ -22,6 +23,8 @@ export interface GameState {
   previewUrl: string | null;
   streamUrl: string | null;
   playAt: number | null;
+  /** Set when this turn's full song plays on the room's Spotify device (this device stays silent) */
+  speaker: { deviceName: string } | null;
   turnEndsAt: number | null;
   timelineLength: number;
   lastFlip: {
@@ -38,6 +41,13 @@ export interface GameState {
   socketError: string | null;
   playlistPreviewCards: Card[] | null;
   playlistPreviewLoading: boolean;
+  /** Spotify Connect devices of the linked account (owner only, after listSpotifyDevices) */
+  spotifyDevices: SpotifyDevice[] | null;
+  setAudioMode: (mode: AudioMode) => void;
+  connectSpotify: () => void;
+  listSpotifyDevices: () => void;
+  selectSpotifyDevice: (deviceId: string) => void;
+  unlinkSpotify: () => void;
   connectAndCreateRoom: (displayName: string, topic: string) => void;
   connectAndJoinRoom: (displayName: string, roomCode: string) => void;
   addLocalPlayer: (name: string) => void;
@@ -86,6 +96,8 @@ export function useGame(): GameState {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [playAt, setPlayAt] = useState<number | null>(null);
+  const [speaker, setSpeaker] = useState<{ deviceName: string } | null>(null);
+  const [spotifyDevices, setSpotifyDevices] = useState<SpotifyDevice[] | null>(null);
   const [turnEndsAt, setTurnEndsAt] = useState<number | null>(null);
   const [timelineLength, setTimelineLength] = useState(0);
   const [lastFlip, setLastFlip] = useState<GameState['lastFlip']>(null);
@@ -147,13 +159,15 @@ export function useGame(): GameState {
       setPreviewUrl(null);
       setStreamUrl(null);
       setPlayAt(null);
+      setSpeaker(null);
       setTurnEndsAt(null);
       setLastFlip(null);
       setRoundEnded(null);
     });
 
-    socket.on('turn:started', ({ activePlayerId: pid, card, previewUrl: url, streamUrl: su, playAt: pa, serverNow, timelineLength: tl, turnEndsAt: te }) => {
+    socket.on('turn:started', ({ activePlayerId: pid, card, previewUrl: url, streamUrl: su, playAt: pa, serverNow, timelineLength: tl, turnEndsAt: te, speaker: sp }) => {
       setActivePlayerId(pid);
+      setSpeaker(sp ?? null);
       setCurrentCard(card);
       setPreviewUrl(url);
       setStreamUrl(su ?? null);
@@ -291,7 +305,12 @@ export function useGame(): GameState {
       setPreviewUrl(null);
       setStreamUrl(null);
       setPlayAt(null);
+      setSpeaker(null);
       setTurnEndsAt(null);
+    });
+
+    socket.on('audio:devices', ({ devices }) => {
+      setSpotifyDevices(devices);
     });
 
     socket.on('playlist:previewed', ({ cards }) => {
@@ -319,6 +338,7 @@ export function useGame(): GameState {
       socket.off('turn:named');
       socket.off('round:ended');
       socket.off('playlist:previewed');
+      socket.off('audio:devices');
       socket.off('error');
     };
   }, []);
@@ -461,6 +481,31 @@ export function useGame(): GameState {
     socket.emit('room:end');
   }, []);
 
+  const setAudioMode = useCallback((mode: AudioMode) => {
+    socket.emit('audio:set-mode', { mode });
+  }, []);
+
+  /** Opens Spotify's login in a new tab — must run inside the click handler (popup blockers). */
+  const connectSpotify = useCallback(() => {
+    const roomCode = roomCodeRef.current;
+    if (!roomCode) return;
+    const params = new URLSearchParams({ room: roomCode, session: getPrimarySessionId() });
+    window.open(`${getServerUrl()}/api/spotify/connect/login?${params}`, '_blank');
+  }, []);
+
+  const listSpotifyDevices = useCallback(() => {
+    socket.emit('audio:list-devices');
+  }, []);
+
+  const selectSpotifyDevice = useCallback((deviceId: string) => {
+    socket.emit('audio:select-device', { deviceId });
+  }, []);
+
+  const unlinkSpotify = useCallback(() => {
+    setSpotifyDevices(null);
+    socket.emit('audio:unlink');
+  }, []);
+
   return {
     room,
     currentCard,
@@ -468,6 +513,7 @@ export function useGame(): GameState {
     previewUrl,
     streamUrl,
     playAt,
+    speaker,
     turnEndsAt,
     timelineLength,
     lastFlip,
@@ -477,6 +523,12 @@ export function useGame(): GameState {
     socketError,
     playlistPreviewCards,
     playlistPreviewLoading,
+    spotifyDevices,
+    setAudioMode,
+    connectSpotify,
+    listSpotifyDevices,
+    selectSpotifyDevice,
+    unlinkSpotify,
     connectAndCreateRoom,
     connectAndJoinRoom,
     addLocalPlayer,

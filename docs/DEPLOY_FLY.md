@@ -64,6 +64,11 @@ Rooms and decks live in **process memory**. Running more than one Machine withou
 | `CLIENT_URL` | Yes | Public app URL, e.g. `https://hitster-online.fly.dev` (Socket.io CORS) |
 | `PORT` | Set in `fly.toml` | `8080` (Fly maps HTTP to this) |
 | `TEST_MODE` | No | Leave unset in production |
+| `SPOTIFY_REDIRECT_URI` | No | Override for the full-songs login callback (default: `<request origin>/api/spotify/connect/callback`) |
+
+### Full songs (Spotify Connect)
+
+In the Spotify dashboard of the app: add the redirect URI `https://<app>.fly.dev/api/spotify/connect/callback`, and add every Spotify account that should be able to connect under **User Management** (development mode allows 5). Those accounts need Premium.
 
 ## Local Docker smoke test
 

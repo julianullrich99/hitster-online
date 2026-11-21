@@ -28,6 +28,7 @@ export default function App() {
       previewUrl={game.previewUrl}
       streamUrl={game.streamUrl}
       playAt={game.playAt}
+      speaker={game.speaker}
       timelineLength={game.timelineLength}
       lastFlip={game.lastFlip}
       roundEnded={game.roundEnded}
@@ -51,6 +52,14 @@ export default function App() {
       playlistPreviewCards={game.playlistPreviewCards}
       playlistPreviewLoading={game.playlistPreviewLoading}
       onEndGame={game.endGame}
+      audioControls={{
+        spotifyDevices: game.spotifyDevices,
+        onSetAudioMode: game.setAudioMode,
+        onConnectSpotify: game.connectSpotify,
+        onListSpotifyDevices: game.listSpotifyDevices,
+        onSelectSpotifyDevice: game.selectSpotifyDevice,
+        onUnlinkSpotify: game.unlinkSpotify,
+      }}
       onLeave={game.leaveRoom}
     />
   );

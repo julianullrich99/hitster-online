@@ -63,6 +63,31 @@ export interface RoundSummary {
   roundNumber: number;
 }
 
+/** Where turn audio plays. 'previews': 30s MP3 on every device. 'spotify': full songs on one Spotify Connect device. */
+export type AudioMode = 'previews' | 'spotify';
+
+/** A Spotify Connect device of the linked account (GET /me/player/devices). */
+export interface SpotifyDevice {
+  id: string;
+  name: string;
+  type: string;        // 'Smartphone', 'Computer', 'Speaker', 'TV', …
+  isActive: boolean;
+}
+
+/**
+ * Room audio output. Spotify tokens never appear here — the server keeps them out of
+ * the broadcast room state.
+ */
+export interface RoomAudio {
+  mode: AudioMode;
+  /** Set while a Spotify (Premium) account is linked to the room */
+  spotify?: {
+    accountName: string;
+    deviceId: string | null;
+    deviceName: string | null;
+  };
+}
+
 export interface Room {
   code: string;
   ownerId: string;
@@ -72,6 +97,7 @@ export interface Room {
   teams: Record<string, Team>;
   useTeams: boolean;
   roundHistory: RoundSummary[];
+  audio: RoomAudio;
   activeRound?: ActiveRound;
 }
 
@@ -177,6 +203,8 @@ export interface ServerToClientEvents {
     timelineLength: number; // number of cards already on the active player's timeline
     /** Unix ms — auto-skip if still in place phase; null when the round has no time limit */
     turnEndsAt: number | null;
+    /** Set when this turn's song plays in full on the room's Spotify device — clients stay silent */
+    speaker: { deviceName: string } | null;
   }) => void;
 
   /** Broadcast after active player places their card */
@@ -212,6 +240,9 @@ export interface ServerToClientEvents {
 
   /** Broadcast when a player's turn is auto-skipped (due to buy or disconnect) */
   'turn:auto-skipped': (data: { playerId: string; reason: 'buy' | 'disconnect' | 'timeout' }) => void;
+
+  /** Spotify Connect devices of the linked account — emitted only to the owner who asked */
+  'audio:devices': (data: { devices: SpotifyDevice[] }) => void;
 
   /** Error — emitted only to the socket that caused it */
   'error': (message: string) => void;
@@ -259,6 +290,18 @@ export interface ClientToServerEvents {
 
   /** Owner ends the game session, transitioning room to game_over */
   'room:end': () => void;
+
+  /** Owner switches between previews on every device and full songs via Spotify */
+  'audio:set-mode': (data: { mode: AudioMode }) => void;
+
+  /** Owner asks for the linked account's Spotify Connect devices (answered with audio:devices) */
+  'audio:list-devices': () => void;
+
+  /** Owner picks the Spotify Connect device that plays the songs */
+  'audio:select-device': (data: { deviceId: string }) => void;
+
+  /** Owner unlinks the Spotify account; audio falls back to previews */
+  'audio:unlink': () => void;
 }
 
 // ----------------------------

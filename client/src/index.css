@@ -2135,6 +2135,17 @@ body {
 }
 .lobby-local-badge { font-size: 12px; }
 
+.lobby-audio-note {
+  font-size: 13px;
+  color: #d1d5db;
+  line-height: 1.4;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  border-radius: 8px;
+}
+.lobby-audio-note strong { color: #4ade80; }
+
 .field-hint {
   font-size: 12px;
   color: #6b7280;

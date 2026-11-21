@@ -7,6 +7,8 @@ import type {
   RoundConfig,
   RoundSummary,
   CardHidden,
+  AudioMode,
+  RoomAudio,
 } from '../../../shared/types';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +56,7 @@ export function createRoom(ownerId: string, displayName: string, topic: string):
     teams: {},
     useTeams: false,
     roundHistory: [],
+    audio: { mode: 'previews' },
   };
 }
 
@@ -689,4 +692,44 @@ export function buildRoundSummary(
 /** Room owner explicitly ends the game — locks the room from new joins. */
 export function endGame(room: Room): Room {
   return { ...room, status: 'game_over' };
+}
+
+// ---------------------------------------------------------------------------
+// Audio output (previews on every device vs. full songs on one Spotify device)
+// ---------------------------------------------------------------------------
+
+/** Switch audio mode. Full songs need a linked Spotify account. */
+export function setAudioMode(room: Room, mode: AudioMode): Room {
+  if (mode === 'spotify' && !room.audio.spotify) {
+    throw new Error('Connect a Spotify account first');
+  }
+  return { ...room, audio: { ...room.audio, mode } };
+}
+
+/** Link a Spotify account (or drop it with null). Unlinking falls back to previews. */
+export function setSpotifyAccount(room: Room, accountName: string | null): Room {
+  if (accountName === null) {
+    return { ...room, audio: { mode: 'previews' } };
+  }
+  const audio: RoomAudio = {
+    mode: 'spotify',
+    spotify: { accountName, deviceId: null, deviceName: null },
+  };
+  return { ...room, audio };
+}
+
+/** Pick the Spotify Connect device that plays the songs. */
+export function setSpotifyDevice(room: Room, deviceId: string, deviceName: string): Room {
+  if (!room.audio.spotify) throw new Error('No Spotify account linked');
+  return {
+    ...room,
+    audio: { ...room.audio, spotify: { ...room.audio.spotify, deviceId, deviceName } },
+  };
+}
+
+/** Device that should play this turn's full song, or null when turn audio uses previews. */
+export function spotifySpeaker(room: Room): { deviceId: string; deviceName: string } | null {
+  const sp = room.audio.spotify;
+  if (room.audio.mode !== 'spotify' || !sp?.deviceId) return null;
+  return { deviceId: sp.deviceId, deviceName: sp.deviceName ?? 'Spotify' };
 }

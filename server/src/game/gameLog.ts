@@ -104,3 +104,7 @@ export function logAutoSkip(
     reason === 'timeout' ? 'Ran out of time — turn skipped' : 'Disconnected — turn skipped';
   return logAction(room, who, 'turn skipped', consequence);
 }
+
+export function logSpotifyFallback(room: Room, deviceName: string): Room {
+  return logAction(room, 'Spotify', `couldn't play on ${deviceName}`, 'Playing the preview on every device');
+}
