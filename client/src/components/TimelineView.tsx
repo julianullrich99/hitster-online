@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -23,9 +23,9 @@ export interface FlipRevealState {
   timedOut?: boolean;
 }
 
-export function TimelineCard({ card, className = '' }: { card: Card; className?: string }) {
+export function TimelineCard({ card, className = '', style }: { card: Card; className?: string; style?: CSSProperties }) {
   return (
-    <div className={`timeline-card placed-card ${className}`.trim()}>
+    <div className={`timeline-card placed-card ${className}`.trim()} style={style}>
       <div className="card-year">{card.releaseYear}</div>
       {card.albumArt ? (
         <img className="card-art" src={card.albumArt} alt="" />
@@ -227,6 +227,25 @@ export function TimelineView({
   challengers = [],
   flipReveal = null,
 }: TimelineViewProps) {
+  // Cards this timeline hasn't shown before slide in (the first time a timeline is shown, the
+  // whole hand is dealt in a quick stagger). Time-based so re-renders don't cut the animation.
+  const firstSeenRef = useRef(new Map<string, { at: number; delay: number }>());
+  const renderNow = Date.now();
+  let newInThisRender = 0;
+  for (const c of cards) {
+    // A correctly revealed card is shown by the reveal first; it settles in once that ends
+    if (flipReveal?.correct && flipReveal.card.trackId === c.trackId) continue;
+    if (!firstSeenRef.current.has(c.trackId)) {
+      firstSeenRef.current.set(c.trackId, { at: renderNow, delay: Math.min(newInThisRender, 8) * 45 });
+      newInThisRender++;
+    }
+  }
+  const enterProps = (card: Card): { className?: string; style?: CSSProperties } => {
+    const seen = firstSeenRef.current.get(card.trackId);
+    if (!seen || renderNow - seen.at > 900) return {};
+    return { className: 'card-enter', style: { animationDelay: `${seen.delay}ms` } };
+  };
+
   const canPlace =
     !readOnly &&
     isActivePlayer &&
@@ -313,7 +332,7 @@ export function TimelineView({
             {isFlipHere && flipReveal && (
               <FlipRevealAtCard card={flipReveal.card} correct={flipReveal.correct} timedOut={flipReveal.timedOut} />
             )}
-            {cards[i] && !flipCorrect && <TimelineCard card={cards[i]} />}
+            {cards[i] && !flipCorrect && <TimelineCard key={cards[i].trackId} card={cards[i]} {...enterProps(cards[i])} />}
           </div>
         );
       })}
@@ -353,7 +372,7 @@ export function TimelineView({
                 onSelect={onSelectPosition}
               />
             )}
-            {cards[i] && !flipCorrect && <TimelineCard card={cards[i]} />}
+            {cards[i] && !flipCorrect && <TimelineCard key={cards[i].trackId} card={cards[i]} {...enterProps(cards[i])} />}
           </div>
         );
       })}

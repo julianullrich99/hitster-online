@@ -2472,3 +2472,192 @@ body {
   .hotseat-banner { font-size: 14px; }
 }
 .lobby-team-row .lobby-team-btn:last-child { margin-left: auto; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Motion — softens the moments where the UI used to jump
+   (everything here is switched off under prefers-reduced-motion)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Screens fade in instead of popping (lobby ⇄ round) */
+.lobby-screen,
+.game-main {
+  animation: screen-in 0.35s ease-out both;
+}
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Turn splash: big name that zooms in and fades away */
+.turn-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(124, 58, 237, 0.18), transparent 60%);
+  animation: splash-bg 1.4s ease-out forwards;
+}
+.turn-splash-text {
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(18px, 5vw, 40px);
+  color: #e0e0ff;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 0 16px;
+  text-shadow: 0 0 24px rgba(167, 139, 250, 0.9), 0 4px 0 #1e1b4b;
+  animation: splash-text 1.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+.turn-splash--mine { background: radial-gradient(ellipse at center, rgba(251, 191, 36, 0.2), transparent 60%); }
+.turn-splash--mine .turn-splash-text {
+  color: #fbbf24;
+  text-shadow: 0 0 28px rgba(251, 191, 36, 0.9), 0 4px 0 #78350f;
+}
+@keyframes splash-bg {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes splash-text {
+  0%   { opacity: 0; transform: scale(0.4); letter-spacing: -0.2em; }
+  25%  { opacity: 1; transform: scale(1.08); letter-spacing: 0.05em; }
+  40%  { transform: scale(1); }
+  75%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.25); filter: blur(4px); }
+}
+
+/* Now playing: album art eases in, the blur lifts on reveal, details slide in */
+.album-art-img { animation: art-in 0.4s ease-out both; }
+@keyframes art-in {
+  from { opacity: 0; transform: scale(1.15); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.album-art-blur { transition: opacity 0.6s ease, backdrop-filter 0.6s ease; }
+.album-art-blur--gone { opacity: 0; backdrop-filter: blur(0); }
+.song-reveal > * { animation: reveal-line 0.45s ease-out both; }
+.song-reveal > :nth-child(2) { animation-delay: 0.08s; }
+.song-reveal > :nth-child(3) { animation-delay: 0.16s; }
+@keyframes reveal-line {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Timeline: new cards settle in; the face-down card drops into its gap */
+.timeline-card.card-enter { animation: card-enter 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+@keyframes card-enter {
+  0%   { opacity: 0; transform: translateY(-18px) scale(0.85) rotate(-4deg); }
+  100% { opacity: 1; transform: none; }
+}
+.timeline-card.face-down.placed-in-gap,
+.timeline-card.face-down.selected-in-gap { animation: card-drop 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
+@keyframes card-drop {
+  from { opacity: 0; transform: translateY(-24px) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Flip reveal fades out at the end instead of vanishing (reveal lasts 2s) */
+.flip-reveal-slot { animation: reveal-out 0.3s ease-in 1.7s forwards; }
+@keyframes reveal-out {
+  to { opacity: 0; transform: scale(0.96); }
+}
+
+/* Coins: pop when gained; spent ones shrink away */
+.token-circle { transition: background-color 0.3s, border-color 0.3s, transform 0.3s; }
+.token-circle:not(.empty) { animation: coin-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5); }
+.token-circle.empty { animation: coin-spend 0.35s ease-out; }
+.token-dot:not(.empty) { animation: coin-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5); }
+@keyframes coin-pop {
+  0%   { transform: scale(0.3) rotateY(180deg); }
+  60%  { transform: scale(1.3) rotateY(0); }
+  100% { transform: scale(1); }
+}
+@keyframes coin-spend {
+  0%   { transform: scale(1.2); filter: brightness(1.6); }
+  100% { transform: scale(1); filter: none; }
+}
+
+/* Player list: active player glows, card count bumps, turn badge pops */
+.player-item { transition: background 0.3s, border-color 0.3s, box-shadow 0.3s, opacity 0.3s; }
+.player-score { animation: score-bump 0.5s ease-out; }
+@keyframes score-bump {
+  0%   { transform: scale(1.35); color: #4ade80; }
+  100% { transform: scale(1); }
+}
+.player-turn-badge { display: inline-block; animation: badge-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.5) both; }
+@keyframes badge-pop {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.sidebar-turn-who { animation: reveal-line 0.35s ease-out both; }
+
+/* Game log and lobby: entries slide in as they arrive */
+.log-entry { animation: log-in 0.35s ease-out both; }
+@keyframes log-in {
+  from { opacity: 0; transform: translateX(14px); background: rgba(167, 139, 250, 0.15); }
+  to   { opacity: 1; transform: none; background: transparent; }
+}
+.lobby-player-chip { animation: chip-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+@keyframes chip-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.challenge-timer-box { animation: chip-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+.btn-rejoin { animation: screen-in 0.4s ease-out both; }
+
+/* Win screen: confetti and a staggered entrance */
+.win-trophy { animation: trophy-in 0.8s cubic-bezier(0.2, 0.9, 0.3, 1.4) both, trophy-float 3s ease-in-out 0.8s infinite; }
+.win-title { animation: screen-in 0.5s ease-out 0.25s both; }
+.win-subtitle { animation: screen-in 0.5s ease-out 0.4s both; }
+.win-history { animation: screen-in 0.5s ease-out 0.55s both; }
+.win-actions { animation: screen-in 0.5s ease-out 0.7s both; }
+@keyframes trophy-in {
+  0%   { opacity: 0; transform: translateY(-60px) scale(0.3) rotate(-25deg); }
+  70%  { transform: translateY(6px) scale(1.1) rotate(6deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes trophy-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+.confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.win-screen > :not(.confetti):not(.scanlines) { position: relative; z-index: 1; }
+.confetti-piece {
+  position: absolute;
+  top: -20px;
+  width: 8px;
+  height: 14px;
+  opacity: 0;
+  animation-name: confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: 2;
+  animation-fill-mode: both;
+}
+.confetti-piece--round { width: 9px; height: 9px; border-radius: 50%; }
+@keyframes confetti-fall {
+  0%   { opacity: 1; transform: translate3d(0, 0, 0) rotate(0); }
+  85%  { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--drift), 105vh, 0) rotate(var(--spin)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .turn-splash,
+  .confetti { display: none; }
+  .flip-reveal-slot { animation: none !important; }
+}

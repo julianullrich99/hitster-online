@@ -94,6 +94,46 @@ function TurnCountdown({ endsAt, totalSeconds }: { endsAt: number; totalSeconds:
   );
 }
 
+/** Short "YOUR TURN" / "ANNA'S TURN" splash when a new turn starts — overlays, never blocks input. */
+function TurnSplash({ text, mine }: { text: string; mine: boolean }) {
+  return (
+    <div className={`turn-splash${mine ? ' turn-splash--mine' : ''}`} role="status" aria-live="polite">
+      <div className="turn-splash-text">{text}</div>
+    </div>
+  );
+}
+
+const CONFETTI_COLORS = ['#fbbf24', '#4ade80', '#a78bfa', '#f472b6', '#60a5fa', '#fb923c'];
+
+/** CSS-only confetti burst; positions come from the index so renders are stable. */
+function Confetti({ pieces = 60 }: { pieces?: number }) {
+  return (
+    <div className="confetti" aria-hidden>
+      {Array.from({ length: pieces }, (_, i) => {
+        const left = (i * 37) % 100;
+        const delay = ((i * 53) % 100) / 100 * 1.2;
+        const duration = 2.4 + ((i * 29) % 100) / 100 * 1.6;
+        const drift = ((i * 41) % 61) - 30;
+        const spin = ((i * 67) % 720) - 360;
+        return (
+          <span
+            key={i}
+            className={`confetti-piece${i % 3 === 0 ? ' confetti-piece--round' : ''}`}
+            style={{
+              left: `${left}%`,
+              background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+              animationDelay: `${delay}s`,
+              animationDuration: `${duration}s`,
+              ['--drift' as string]: `${drift}vw`,
+              ['--spin' as string]: `${spin}deg`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 /** Owner-only remove button; asks first because it also removes players who are still here. */
 function KickButton({ player, onKick }: { player: Player; onKick: (playerId: string) => void }) {
   return (
@@ -182,7 +222,7 @@ function PlayerList({
               <span className="player-disconnected-badge">⚡ offline</span>
             )}
           </div>
-          <div className="player-score">{cardCount} card{cardCount !== 1 ? 's' : ''}</div>
+          <div className="player-score" key={cardCount}>{cardCount} card{cardCount !== 1 ? 's' : ''}</div>
           <div className="player-token-dots">
             {Array.from({ length: 5 }, (_, i) => (
               <div key={i} className={`token-dot${i >= tokens ? ' empty' : ''}`} />
@@ -206,7 +246,7 @@ function PlayerList({
           data-testid="sidebar-turn-status"
         >
           <div className="sidebar-turn-status-main">
-            <div className="sidebar-turn-who">
+            <div className="sidebar-turn-who" key={activeTurnLabel}>
               {isMyTurn && !isHotSeat ? 'your turn' : `${activeTurnLabel}'s turn`}
             </div>
             {turnEndsAt !== null && (
@@ -454,8 +494,8 @@ function AudioPlayer({
         <div className="album-art-wrap">
           {albumArt ? (
             <>
-              <img src={albumArt} alt="Album art" />
-              {!isFlipped && <div className="album-art-blur">🎵</div>}
+              <img key={albumArt} className="album-art-img" src={albumArt} alt="Album art" />
+              <div className={`album-art-blur${isFlipped ? ' album-art-blur--gone' : ''}`}>🎵</div>
             </>
           ) : (
             <div className="album-art-blur">🎵</div>
@@ -471,13 +511,13 @@ function AudioPlayer({
                 : 'NOW PLAYING'}
           </div>
           {showDetails && revealedCard ? (
-            <>
+            <div className="song-reveal" key={revealedCard.trackId}>
               <div className="song-title">{revealedCard.title}</div>
               <div className="song-artist">{revealedCard.artist}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
                 <div className="song-year">{revealedCard.releaseYear}</div>
               </div>
-            </>
+            </div>
           ) : (
             <div className="now-playing-status" data-testid="now-playing-status">
               {statusMessage}
@@ -591,6 +631,7 @@ function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, onEndGam
   return (
     <div className="win-screen">
       <div className="scanlines" />
+      {!isCoopLoss && <Confetti />}
       <div className="win-trophy">{isCoopLoss ? '💀' : '🏆'}</div>
       <div className="win-title">{title}</div>
       <div className="win-subtitle">{subtitle}</div>
@@ -1341,6 +1382,28 @@ export default function GameRoom({
     setSelectedPosition(null);
   }, [sessionId]);
 
+  // Turn splash: when a turn enters its place phase for a new player (or after a reveal)
+  const turnPhase = currentTurn?.phase;
+  const prevTurnRef = useRef<{ id: string | null; phase: string | undefined }>({ id: null, phase: undefined });
+  const [splash, setSplash] = useState<{ key: number; text: string; mine: boolean } | null>(null);
+  useEffect(() => {
+    const prev = prevTurnRef.current;
+    prevTurnRef.current = { id: resolvedActivePlayerId, phase: turnPhase };
+    if (room.status !== 'round_active' || turnPhase !== 'place' || !resolvedActivePlayerId) return;
+    if (prev.phase === 'place' && prev.id === resolvedActivePlayerId) return; // same turn (e.g. skip)
+    const mine = isActivePlayer && !isSpectator;
+    const text = mine
+      ? (isHotSeat ? `${viewerName}'s turn` : 'Your turn')
+      : `${activePlayerDisplayName(room, resolvedActivePlayerId)}'s turn`;
+    setSplash(s => ({ key: (s?.key ?? 0) + 1, text, mine }));
+  }, [resolvedActivePlayerId, turnPhase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!splash) return;
+    const t = setTimeout(() => setSplash(null), 1400);
+    return () => clearTimeout(t);
+  }, [splash]);
+
   function handleSelectPosition(pos: number) {
     setSelectedPosition(pos);
   }
@@ -1446,6 +1509,7 @@ export default function GameRoom({
   return (
     <div className="game-root" data-testid="round-active">
       <div className="scanlines" />
+      {splash && <TurnSplash key={splash.key} text={splash.text} mine={splash.mine} />}
 
       {/* Header */}
       <header className="game-header">
