@@ -36,6 +36,8 @@ export interface LastRoom {
   roomCode: string;
   sessionId: string;
   displayName: string;
+  /** Other people playing on this device (shared phone / hot-seat), restored on rejoin */
+  localPlayers?: Array<{ id: string; name: string }>;
 }
 
 export function getLastRoom(): LastRoom | null {
@@ -46,7 +48,10 @@ export function getLastRoom(): LastRoom | null {
     if (typeof parsed.roomCode !== 'string' || typeof parsed.sessionId !== 'string' || typeof parsed.displayName !== 'string') {
       return null;
     }
-    return { roomCode: parsed.roomCode, sessionId: parsed.sessionId, displayName: parsed.displayName };
+    const localPlayers = Array.isArray(parsed.localPlayers)
+      ? parsed.localPlayers.filter(p => typeof p?.id === 'string' && typeof p?.name === 'string')
+      : [];
+    return { roomCode: parsed.roomCode, sessionId: parsed.sessionId, displayName: parsed.displayName, localPlayers };
   } catch {
     return null;
   }

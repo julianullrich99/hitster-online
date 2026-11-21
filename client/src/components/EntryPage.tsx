@@ -3,8 +3,8 @@ import type { Room, RoomSummary } from '../../../shared/types';
 import { getSavedDisplayName, saveDisplayName, getLastRoom, type LastRoom } from '../socket/client';
 
 interface EntryPageProps {
-  onConnectAndCreateRoom: (displayName: string, topic: string) => void;
-  onConnectAndJoinRoom: (displayName: string, roomCode: string) => void;
+  onConnectAndCreateRoom: (displayName: string, topic: string, companions: string[]) => void;
+  onConnectAndJoinRoom: (displayName: string, roomCode: string, companions: string[]) => void;
   onRejoinLastRoom: (lastRoom: LastRoom) => void;
   serverUrl?: string;
   serverError?: string | null;
@@ -54,6 +54,10 @@ export default function EntryPage({
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  // More people sharing this phone — each gets their own seat, turns pass around on this device
+  const [companions, setCompanions] = useState<string[]>([]);
+  const [companionName, setCompanionName] = useState('');
+  const [showCompanions, setShowCompanions] = useState(false);
   const topicInputRef = useRef<HTMLInputElement>(null);
   // Read on every render: a kick or leave clears it while this page is shown
   const lastRoom = getLastRoom();
@@ -112,15 +116,23 @@ export default function EntryPage({
     }
     if (connecting || !roomCode.trim()) return;
     setConnecting(true);
-    onConnectAndJoinRoom(resolvedName, roomCode);
+    onConnectAndJoinRoom(resolvedName, roomCode, companions);
   }
 
   function handleCreateSubmit() {
     if (!nameValid || !joinTopic.trim()) return;
     setConnecting(true);
-    onConnectAndCreateRoom(resolvedName, joinTopic.trim());
+    onConnectAndCreateRoom(resolvedName, joinTopic.trim(), companions);
     setShowCreateModal(false);
     setJoinTopic('');
+  }
+
+  function addCompanion() {
+    const name = companionName.trim();
+    if (!name) return;
+    const taken = [resolvedName, ...companions].some(n => n.toLowerCase() === name.toLowerCase());
+    if (!taken) setCompanions(prev => [...prev, name]);
+    setCompanionName('');
   }
 
   function handleRejoin(saved: LastRoom) {
@@ -189,6 +201,63 @@ export default function EntryPage({
             </div>
           </div>
 
+          {/* Shared phone: more players on this device */}
+          <div className="field companions-field">
+            {companions.length > 0 && (
+              <div className="companion-chips">
+                {companions.map(name => (
+                  <span key={name} className="companion-chip">
+                    {name}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${name}`}
+                      onClick={() => setCompanions(prev => prev.filter(n => n !== name))}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {showCompanions || companions.length > 0 ? (
+              <div className="companion-add-row">
+                <input
+                  className="form-input"
+                  type="text"
+                  placeholder="Name of the person next to you"
+                  maxLength={24}
+                  value={companionName}
+                  onChange={e => setCompanionName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addCompanion()}
+                  data-testid="companion-name-input"
+                />
+                <button
+                  type="button"
+                  className="btn-companion-add"
+                  disabled={!companionName.trim()}
+                  onClick={addCompanion}
+                  data-testid="companion-add-btn"
+                >
+                  + Add
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn-companion-toggle"
+                onClick={() => setShowCompanions(true)}
+                data-testid="companion-toggle-btn"
+              >
+                👥 Someone without a phone? Play together on this device
+              </button>
+            )}
+            {(showCompanions || companions.length > 0) && (
+              <div className="field-hint">
+                Everyone gets their own timeline. When it&apos;s their turn, hand them the phone.
+              </div>
+            )}
+          </div>
+
           {lastRoom && rejoinable && (
             <button
               className="btn btn-rejoin"
@@ -197,6 +266,7 @@ export default function EntryPage({
               data-testid="rejoin-btn"
             >
               ↺ Rejoin {lastRoom.roomCode} as {lastRoom.displayName}
+              {(lastRoom.localPlayers?.length ?? 0) > 0 && ` +${lastRoom.localPlayers?.length}`}
               <span className="btn-rejoin-sub">{rejoinable.topic}</span>
             </button>
           )}

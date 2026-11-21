@@ -275,6 +275,59 @@ body {
   box-shadow: 0 0 20px rgba(124, 58, 237, 0.5);
 }
 
+/* Entry page: more players sharing this device */
+.companions-field { margin-top: -4px; }
+.btn-companion-toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px dashed #4b5563;
+  color: #a78bfa;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+.btn-companion-toggle:hover { border-color: #a78bfa; }
+.companion-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.companion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 10px;
+  background: #1e1e3a;
+  border: 1px solid #7c3aed;
+  color: #e0e0ff;
+  font-weight: 700;
+  font-size: 14px;
+  animation: chip-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+.companion-chip button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 13px;
+}
+.companion-add-row { display: flex; gap: 8px; }
+.companion-add-row .form-input { flex: 1; min-width: 0; }
+.btn-companion-add {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  background: #7c3aed;
+  border: 2px solid #6d28d9;
+  color: #fff;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-companion-add:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .btn-rejoin {
   background: rgba(74, 222, 128, 0.08);
   border-color: #4ade80;
@@ -2541,7 +2594,7 @@ body {
 .song-reveal > :nth-child(2) { animation-delay: 0.08s; }
 .song-reveal > :nth-child(3) { animation-delay: 0.16s; }
 @keyframes reveal-line {
-  from { opacity: 0; transform: translateX(-12px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
 
@@ -2596,7 +2649,7 @@ body {
 /* Game log and lobby: entries slide in as they arrive */
 .log-entry { animation: log-in 0.35s ease-out both; }
 @keyframes log-in {
-  from { opacity: 0; transform: translateX(14px); background: rgba(167, 139, 250, 0.15); }
+  from { opacity: 0; transform: translateY(-6px); background: rgba(167, 139, 250, 0.15); }
   to   { opacity: 1; transform: none; background: transparent; }
 }
 .lobby-player-chip { animation: chip-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
@@ -2646,6 +2699,14 @@ body {
   0%   { opacity: 1; transform: translate3d(0, 0, 0) rotate(0); }
   85%  { opacity: 1; }
   100% { opacity: 0; transform: translate3d(var(--drift), 105vh, 0) rotate(var(--spin)); }
+}
+
+/* Phones: shorter, lighter motion — the splash must not hide the timeline for long */
+@media (max-width: 640px) {
+  .turn-splash, .turn-splash-text { animation-duration: 1.1s; }
+  .turn-splash-text { font-size: 22px; }
+  .timeline-card.card-enter { animation-duration: 0.35s; }
+  .confetti-piece:nth-child(2n) { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

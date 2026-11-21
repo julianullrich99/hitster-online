@@ -882,7 +882,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
                 <span style={{ fontSize: 10, color: '#fbbf24' }}>★</span>
               )}
               {localIds.size > 1 && localIds.has(p.id) && (
-                <span className="lobby-local-badge" title="Plays on this device">📺</span>
+                <span className="lobby-local-badge" title="Plays on this device">👥</span>
               )}
               {!p.isConnected && (
                 <span className="player-disconnected-badge">offline</span>
@@ -1001,8 +1001,8 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
       <div className="lobby-teams-section" data-testid="local-players-section">
         <div className="lobby-config-label">Players on this device</div>
         <div className="lobby-local-hint">
-          Playing together on one screen (TV, laptop)? Add everyone here — turns are passed
-          around on this device. Others can still join online.
+          Someone without a phone? Add them here and share this device — everyone gets their
+          own timeline, and the screen switches to whoever is on turn.
         </div>
         {localPlayers.length > 0 && (
           <div className="lobby-teams-list">
@@ -1400,7 +1400,7 @@ export default function GameRoom({
 
   useEffect(() => {
     if (!splash) return;
-    const t = setTimeout(() => setSplash(null), 1400);
+    const t = setTimeout(() => setSplash(null), window.matchMedia('(max-width: 640px)').matches ? 1100 : 1400);
     return () => clearTimeout(t);
   }, [splash]);
 

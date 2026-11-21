@@ -7,6 +7,7 @@ import {
   setPrimarySessionId,
   saveLastRoom,
   clearLastRoom,
+  getLastRoom,
   type GameSocket,
   type LastRoom,
 } from '../socket/client';
@@ -52,8 +53,9 @@ export interface GameState {
   listSpotifyDevices: () => void;
   selectSpotifyDevice: (deviceId: string) => void;
   unlinkSpotify: () => void;
-  connectAndCreateRoom: (displayName: string, topic: string) => void;
-  connectAndJoinRoom: (displayName: string, roomCode: string) => void;
+  /** `companions`: more people playing on this device, added right after joining */
+  connectAndCreateRoom: (displayName: string, topic: string, companions?: string[]) => void;
+  connectAndJoinRoom: (displayName: string, roomCode: string, companions?: string[]) => void;
   /** Take back the seat from the last room this browser was in */
   rejoinLastRoom: (lastRoom: LastRoom) => void;
   /** Owner removes a player from the room */
@@ -121,6 +123,8 @@ export function useGame(): GameState {
   const roomCodeRef = useRef<string | null>(null);
   const sessionIdRef = useRef(sessionId);
   const localSocketsRef = useRef(new Map<string, GameSocket>());
+  // Players to add on this device once the main player is in the room
+  const pendingLocalRef = useRef<Array<{ id?: string; name: string }>>([]);
 
   useEffect(() => {
     const adoptIdentity = (id: string, code: string) => {
@@ -129,7 +133,10 @@ export function useGame(): GameState {
       setPrimarySessionId(id);
       setSessionId(id);
       const displayName = (socket.auth as SocketAuth | undefined)?.displayName ?? '';
-      saveLastRoom({ roomCode: code, sessionId: id, displayName });
+      // Keep the device's other players when this is a reconnect to the same room
+      const previous = getLastRoom();
+      const localPlayers = previous?.roomCode === code ? previous.localPlayers : [];
+      saveLastRoom({ roomCode: code, sessionId: id, displayName, localPlayers });
     };
 
     const dropLocalPlayer = (id: string) => {
@@ -407,13 +414,15 @@ export function useGame(): GameState {
     }
   }, []);
 
-  const connectAndCreateRoom = useCallback((displayName: string, topic: string) => {
+  const connectAndCreateRoom = useCallback((displayName: string, topic: string, companions: string[] = []) => {
+    pendingLocalRef.current = companions.map(name => ({ name }));
     applySocketAuth(displayName);
     const trimmed = topic.trim();
     ensureConnected(() => socket.emit('room:create', { topic: trimmed }));
   }, [applySocketAuth, ensureConnected]);
 
-  const connectAndJoinRoom = useCallback((displayName: string, roomCode: string) => {
+  const connectAndJoinRoom = useCallback((displayName: string, roomCode: string, companions: string[] = []) => {
+    pendingLocalRef.current = companions.map(name => ({ name }));
     applySocketAuth(displayName);
     const code = roomCode.trim().toUpperCase();
     ensureConnected(() => socket.emit('room:join', { roomCode: code }));
@@ -422,6 +431,7 @@ export function useGame(): GameState {
   const rejoinLastRoom = useCallback((lastRoom: LastRoom) => {
     // The server binds the identity at handshake — reconnect if this socket has another one
     const reconnect = socket.connected && (socket.auth as SocketAuth | undefined)?.sessionId !== lastRoom.sessionId;
+    pendingLocalRef.current = lastRoom.localPlayers ?? [];
     setPrimarySessionId(lastRoom.sessionId);
     sessionIdRef.current = lastRoom.sessionId;
     setSessionId(lastRoom.sessionId);
@@ -440,12 +450,13 @@ export function useGame(): GameState {
     [],
   );
 
-  const addLocalPlayer = useCallback((name: string) => {
+  /** `id`: the player's previous identity on this device, to take their seat back after a reload */
+  const addLocalPlayer = useCallback((name: string, id?: string) => {
     const roomCode = roomCodeRef.current;
     const displayName = name.trim();
     if (!roomCode || !displayName) return;
 
-    const localSocket = createGameSocket({ sessionId: crypto.randomUUID(), displayName });
+    const localSocket = createGameSocket({ sessionId: id ?? crypto.randomUUID(), displayName });
     let joinedId: string | null = null;
 
     localSocket.on('connect', () => {
@@ -481,6 +492,22 @@ export function useGame(): GameState {
       localSocket.disconnect();
     }, 300);
   }, []);
+
+  // Add the people who came along on this device (entry page or a rejoin) once we're in
+  const roomCode = room?.code;
+  useEffect(() => {
+    if (!roomCode || pendingLocalRef.current.length === 0) return;
+    const pending = pendingLocalRef.current;
+    pendingLocalRef.current = [];
+    for (const p of pending) addLocalPlayer(p.name, p.id);
+  }, [roomCode, addLocalPlayer]);
+
+  // Remember them for the one-click rejoin
+  useEffect(() => {
+    const last = getLastRoom();
+    if (!roomCodeRef.current || !last || last.roomCode !== roomCodeRef.current) return;
+    saveLastRoom({ ...last, localPlayers: localPlayers.map(p => ({ id: p.id, name: p.name })) });
+  }, [localPlayers, sessionId]);
 
   const leaveRoom = useCallback(() => {
     roomCodeRef.current = null;
