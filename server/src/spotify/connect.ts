@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import type { SpotifyDevice } from '../../../shared/types';
+import type { Lang, SpotifyDevice } from '../../../shared/types';
 
 /*
  * Full-song playback through Spotify Connect.
@@ -25,6 +25,8 @@ export interface PendingLogin {
   roomCode: string;
   sessionId: string;
   redirectUri: string;
+  /** Language of the page shown after the login */
+  lang: Lang;
   createdAt: number;
 }
 
@@ -50,7 +52,14 @@ interface DevicesResponse {
   devices: Array<{ id: string | null; name: string; type: string; is_active: boolean; is_restricted: boolean }>;
 }
 
-export class SpotifyConnectError extends Error {}
+/** What went wrong, so the result page can say it in the player's language */
+export type SpotifyConnectErrorCode = 'not_premium' | 'not_allowed' | 'other';
+
+export class SpotifyConnectError extends Error {
+  constructor(message: string, readonly code: SpotifyConnectErrorCode = 'other') {
+    super(message);
+  }
+}
 
 type FetchFn = typeof fetch;
 
@@ -69,10 +78,10 @@ export class SpotifyConnect {
   }
 
   /** Start a login for the room owner; returns the Spotify consent URL. */
-  beginLogin(roomCode: string, sessionId: string, redirectUri: string): string {
+  beginLogin(roomCode: string, sessionId: string, redirectUri: string, lang: Lang = 'de'): string {
     this.dropExpiredLogins();
     const state = randomBytes(16).toString('hex');
-    this.pendingLogins.set(state, { roomCode, sessionId, redirectUri, createdAt: Date.now() });
+    this.pendingLogins.set(state, { roomCode, sessionId, redirectUri, lang, createdAt: Date.now() });
     const params = new URLSearchParams({
       client_id: this.clientId,
       response_type: 'code',
@@ -106,15 +115,16 @@ export class SpotifyConnect {
     });
     if (!res.ok) {
       // 403 here usually means the account isn't on the app's allowlist (development mode)
-      throw new SpotifyConnectError(
-        res.status === 403
-          ? 'This Spotify account is not allowed to use the app yet (add it under User Management in the Spotify dashboard)'
-          : `Spotify profile request failed (${res.status})`,
-      );
+      throw res.status === 403
+        ? new SpotifyConnectError(
+            'This Spotify account is not allowed to use the app yet (add it under User Management in the Spotify dashboard)',
+            'not_allowed',
+          )
+        : new SpotifyConnectError(`Spotify profile request failed (${res.status})`);
     }
     const profile = (await res.json()) as ProfileResponse;
     if (profile.product && profile.product !== 'premium') {
-      throw new SpotifyConnectError('Full songs need Spotify Premium');
+      throw new SpotifyConnectError('Full songs need Spotify Premium', 'not_premium');
     }
 
     this.links.set(login.roomCode, {

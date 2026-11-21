@@ -10,6 +10,15 @@
 
 import { test, expect, Browser, BrowserContext, Page } from '@playwright/test';
 
+// The UI defaults to German; these scenarios click English labels, so every context
+// (including the extra ones from browser.newContext()) starts with English selected.
+test.use({
+  storageState: {
+    cookies: [],
+    origins: [{ origin: 'http://localhost:5173', localStorage: [{ name: 'hitster_lang', value: 'en' }] }],
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -243,12 +252,11 @@ test('start round button disables while starting', async ({ page }) => {
   await expect(page.locator('[data-testid="start-round-btn"]')).toBeEnabled();
   await page.click('[data-testid="start-round-btn"]');
 
-  // After click: button is either disabled/loading OR we're already in the game
-  await expect(async () => {
-    const inGame = await page.locator('[data-testid="round-active"]').isVisible();
-    if (inGame) return; // already transitioned — acceptable
-    await expect(page.locator('[data-testid="start-round-btn"]')).toBeDisabled();
-  }).toPass({ timeout: 5_000 });
+  // After click: button is either disabled/loading OR we're already in the game.
+  // One locator for both, so the lobby unmounting mid-check can't stall the assertion.
+  await expect(
+    page.locator('[data-testid="round-active"], [data-testid="start-round-btn"]:disabled').first(),
+  ).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------

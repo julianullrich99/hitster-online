@@ -15,6 +15,9 @@ import { TimelineView } from './TimelineView';
 import { renderGameLog } from '../game/gameLog';
 import { fetchEmbedPreviewStream, turnPlayableStream } from '../spotify';
 import { gameAudio, isDeviceMuted, setDeviceMuted } from '../audio/gameAudio';
+import { useT, withNodes, type MessageKey, type TFunction } from '../i18n';
+import { translateError } from '../i18n/errors';
+import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +62,18 @@ function sortTeamsMeFirst(teams: Team[], sessionId: string): Team[] {
   });
 }
 
+const MODE_NAME_KEYS: Record<GameMode, MessageKey> = {
+  original: 'mode.original',
+  pro: 'mode.pro',
+  expert: 'mode.expert',
+  cooperative: 'mode.cooperative',
+};
+
+/** Translated name of a game mode */
+export function modeName(t: TFunction, mode: GameMode): string {
+  return t(MODE_NAME_KEYS[mode]);
+}
+
 export function activePlayerDisplayName(room: Room, activePlayerId: string | null): string {
   if (!activePlayerId) return '...';
   if (room.players[activePlayerId]) return room.players[activePlayerId].displayName;
@@ -68,6 +83,7 @@ export function activePlayerDisplayName(room: Room, activePlayerId: string | nul
 
 /** Time left to place, counted on this device's clock (turnEndsAt is already converted). */
 export function TurnCountdown({ endsAt, totalSeconds }: { endsAt: number; totalSeconds: number | null }) {
+  const t = useT();
   const [msLeft, setMsLeft] = useState(() => Math.max(0, endsAt - Date.now()));
 
   useEffect(() => {
@@ -84,7 +100,7 @@ export function TurnCountdown({ endsAt, totalSeconds }: { endsAt: number; totalS
 
   return (
     <div className={`turn-countdown${urgent ? ' turn-countdown--urgent' : ''}`} data-testid="turn-countdown">
-      <span className="turn-countdown-time" aria-label={`${seconds} seconds left`}>{label}</span>
+      <span className="turn-countdown-time" aria-label={t('countdown.secondsLeft', { count: seconds })}>{label}</span>
       {fraction !== null && (
         <span className="turn-countdown-bar" aria-hidden>
           <span className="turn-countdown-fill" style={{ width: `${fraction * 100}%` }} />
@@ -138,16 +154,19 @@ export function Confetti({ pieces = 60 }: { pieces?: number }) {
 function TvHint({ room }: { room: Room }) {
   const tvUrl = `${window.location.origin}/?tv=${room.code}`;
   const count = room.observers ?? 0;
+  const t = useT();
   return (
     <div className="lobby-tv-hint" data-testid="tv-hint">
       <span className="lobby-tv-icon" aria-hidden>📺</span>
       <div>
         {count > 0 ? (
-          <div className="lobby-tv-title">{count === 1 ? 'TV screen connected' : `${count} TV screens connected`}</div>
+          <div className="lobby-tv-title">{t('tvHint.connected', { count })}</div>
         ) : (
-          <div className="lobby-tv-title">Show the game on a TV</div>
+          <div className="lobby-tv-title">{t('tvHint.show')}</div>
         )}
-        <div className="lobby-tv-url">Open <strong>{tvUrl.replace(/^https?:\/\//, '')}</strong> on the TV</div>
+        <div className="lobby-tv-url">
+          {withNodes(t('tvHint.open'), { url: <strong>{tvUrl.replace(/^https?:\/\//, '')}</strong> })}
+        </div>
       </div>
     </div>
   );
@@ -156,13 +175,14 @@ function TvHint({ room }: { room: Room }) {
 /** Sound on/off for this device only (e.g. phones stay quiet while the TV plays). */
 export function MuteToggle() {
   const [muted, setMuted] = useState(isDeviceMuted);
+  const t = useT();
   return (
     <button
       type="button"
       className={`mute-toggle${muted ? ' mute-toggle--muted' : ''}`}
       aria-pressed={muted}
-      aria-label={muted ? 'Sound off on this device — tap to turn on' : 'Sound on — tap to mute this device'}
-      title={muted ? 'Sound off on this device' : 'Sound on'}
+      aria-label={muted ? t('mute.offLabel') : t('mute.onLabel')}
+      title={muted ? t('mute.offTitle') : t('mute.onTitle')}
       data-testid="mute-toggle"
       onClick={() => { setDeviceMuted(!muted); setMuted(!muted); }}
     >
@@ -173,16 +193,18 @@ export function MuteToggle() {
 
 /** Owner-only remove button; asks first because it also removes players who are still here. */
 function KickButton({ player, onKick }: { player: Player; onKick: (playerId: string) => void }) {
+  const t = useT();
+  const name = player.displayName;
   return (
     <button
       type="button"
       className="kick-btn"
-      title={`Remove ${player.displayName}`}
-      aria-label={`Remove ${player.displayName} from the room`}
+      title={t('kick.title', { name })}
+      aria-label={t('kick.aria', { name })}
       data-testid="kick-player-btn"
       onClick={(e) => {
         e.stopPropagation();
-        if (window.confirm(`Remove ${player.displayName} from the room?`)) onKick(player.id);
+        if (window.confirm(t('kick.confirm', { name }))) onKick(player.id);
       }}
     >
       ✕
@@ -225,6 +247,7 @@ function PlayerList({
   onKick,
   turnEndsAt,
 }: PlayerListProps) {
+  const t = useT();
   const isHotSeat = localIds.length > 1;
   const players = Object.values(room.players).filter((p) => !p.isSpectator);
   const round = room.activeRound;
@@ -253,13 +276,13 @@ function PlayerList({
         </div>
         <div className="player-info">
           <div className="player-name">
-            {isMe && !isHotSeat ? 'You' : p.displayName}
-            {isActive && <span className="player-turn-badge">TURN</span>}
+            {isMe && !isHotSeat ? t('players.you') : p.displayName}
+            {isActive && <span className="player-turn-badge">{t('players.turnBadge')}</span>}
             {!p.isConnected && (
-              <span className="player-disconnected-badge">⚡ offline</span>
+              <span className="player-disconnected-badge">{t('players.offline')}</span>
             )}
           </div>
-          <div className="player-score" key={cardCount}>{cardCount} card{cardCount !== 1 ? 's' : ''}</div>
+          <div className="player-score" key={cardCount}>{t('common.cards', { count: cardCount })}</div>
           <div className="player-token-dots">
             {Array.from({ length: 5 }, (_, i) => (
               <div key={i} className={`token-dot${i >= tokens ? ' empty' : ''}`} />
@@ -284,7 +307,7 @@ function PlayerList({
         >
           <div className="sidebar-turn-status-main">
             <div className="sidebar-turn-who" key={activeTurnLabel}>
-              {isMyTurn && !isHotSeat ? 'your turn' : `${activeTurnLabel}'s turn`}
+              {isMyTurn && !isHotSeat ? t('turn.yours') : t('turn.other', { name: activeTurnLabel })}
             </div>
             {turnEndsAt !== null && (
               <TurnCountdown endsAt={turnEndsAt} totalSeconds={round.config.turnSeconds} />
@@ -293,7 +316,7 @@ function PlayerList({
         </div>
       )}
 
-      <div className="panel-title">Players</div>
+      <div className="panel-title">{t('players.title')}</div>
 
       {hasTeams ? (
         <>
@@ -316,7 +339,7 @@ function PlayerList({
             );
             return unteamedPlayers.length > 0 ? (
               <div>
-                <div className="player-team-header">No team</div>
+                <div className="player-team-header">{t('players.noTeam')}</div>
                 {unteamedPlayers.map(p => renderPlayer(p))}
               </div>
             ) : null;
@@ -328,14 +351,14 @@ function PlayerList({
 
       {round && (
         <div className="round-info">
-          <div className="panel-title">Round</div>
+          <div className="panel-title">{t('round.title')}</div>
           <div className="round-info-row">
-            Mode: <span className="round-info-val">{round.config.mode}</span><br />
-            Deck: <span className="round-info-val" style={{
+            {t('round.mode')}: <span className="round-info-val">{modeName(t, round.config.mode)}</span><br />
+            {t('round.deck')}: <span className="round-info-val" style={{
               color: round.deckRemaining <= 3 ? '#ef4444' : round.deckRemaining <= 10 ? '#fbbf24' : undefined
-            }}>{round.deckRemaining} left</span><br />
-            Target: <span className="round-info-val-green">{round.config.cardsToWin} cards</span><br />
-            Time: <span className="round-info-val">{round.config.turnSeconds ? `${round.config.turnSeconds}s` : 'no limit'}</span>
+            }}>{t('round.deckLeft', { count: round.deckRemaining })}</span><br />
+            {t('round.target')}: <span className="round-info-val-green">{t('common.cards', { count: round.config.cardsToWin })}</span><br />
+            {t('round.time')}: <span className="round-info-val">{round.config.turnSeconds ? t('common.secondsShort', { count: round.config.turnSeconds }) : t('round.noLimit')}</span>
           </div>
         </div>
       )}
@@ -370,6 +393,7 @@ export function AudioPlayer({
   isFlipped,
   isActivePlayer,
 }: AudioPlayerProps) {
+  const t = useT();
   const waveformRef = useRef<HTMLDivElement>(null);
   const waveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryPlayRef = useRef<(() => void) | null>(null);
@@ -506,15 +530,15 @@ export function AudioPlayer({
   }, [previewUrl, streamUrl, playAt, currentCard?.trackId, speaker?.deviceName]);
 
   const statusMessage = (() => {
-    if (playbackStatus === 'speaker' && speaker) return `🔊 Playing on ${speaker.deviceName}`;
-    if (playbackStatus === 'resolving' || playbackStatus === 'loading') return 'Loading preview…';
-    if (playbackStatus === 'unavailable') return 'Preview unavailable for this track.';
-    if (playbackStatus === 'blocked') return 'Your browser blocked autoplay.';
-    if (playbackStatus === 'ended') return 'Preview finished.';
+    if (playbackStatus === 'speaker' && speaker) return t('audio.playingOn', { device: speaker.deviceName });
+    if (playbackStatus === 'resolving' || playbackStatus === 'loading') return t('audio.loading');
+    if (playbackStatus === 'unavailable') return t('audio.unavailable');
+    if (playbackStatus === 'blocked') return t('audio.blocked');
+    if (playbackStatus === 'ended') return t('audio.ended');
     if (playbackStatus === 'playing') {
-      return isActivePlayer ? 'Song is playing…' : 'Song is playing for all…';
+      return isActivePlayer ? t('audio.playing') : t('audio.playingAll');
     }
-    return isActivePlayer ? 'Starting preview…' : 'Starting preview for all…';
+    return isActivePlayer ? t('audio.starting') : t('audio.startingAll');
   })();
 
   const showDetails = isFlipped && revealedCard;
@@ -531,7 +555,7 @@ export function AudioPlayer({
         <div className="album-art-wrap">
           {albumArt ? (
             <>
-              <img key={albumArt} className="album-art-img" src={albumArt} alt="Album art" />
+              <img key={albumArt} className="album-art-img" src={albumArt} alt={t('audio.albumArt')} />
               <div className={`album-art-blur${isFlipped ? ' album-art-blur--gone' : ''}`}>🎵</div>
             </>
           ) : (
@@ -542,10 +566,10 @@ export function AudioPlayer({
         <div className="song-info">
           <div className="song-label">
             {isFlipped
-              ? 'REVEALED'
+              ? t('audio.revealed')
               : isActivePlayer
-                ? 'NOW PLAYING — PLACE THIS CARD'
-                : 'NOW PLAYING'}
+                ? t('audio.nowPlayingPlace')
+                : t('audio.nowPlaying')}
           </div>
           {showDetails && revealedCard ? (
             <div className="song-reveal" key={revealedCard.trackId}>
@@ -565,7 +589,7 @@ export function AudioPlayer({
                   onClick={() => retryPlayRef.current?.()}
                   data-testid="tap-to-play-btn"
                 >
-                  ▶ Tap to play
+                  {t('audio.tapToPlay')}
                 </button>
               )}
             </div>
@@ -574,7 +598,7 @@ export function AudioPlayer({
 
         {playbackStatus === 'playing' && (
           <div className="song-timer-wrap">
-            <div className="song-timer-label">TIME LEFT</div>
+            <div className="song-timer-label">{t('audio.timeLeft')}</div>
             <div className="song-timer">
               0:{String(Math.ceil(timeLeft)).padStart(2, '0')}
             </div>
@@ -597,6 +621,7 @@ interface ChallengeBarProps {
 }
 
 export function ChallengeBar({ deadline }: ChallengeBarProps) {
+  const t = useT();
   const [seconds, setSeconds] = useState<number>(CHALLENGE_WINDOW_MS / 1000);
 
   useEffect(() => {
@@ -614,8 +639,35 @@ export function ChallengeBar({ deadline }: ChallengeBarProps) {
 
   return (
     <div className="challenge-timer-box challenge-timer-box--compact" aria-live="polite">
-      <div className="challenge-timer-count">{seconds}s</div>
-      <div className="challenge-timer-label">Challenge window</div>
+      <div className="challenge-timer-count">{t('common.secondsShort', { count: seconds })}</div>
+      <div className="challenge-timer-label">{t('challenge.window')}</div>
+    </div>
+  );
+}
+
+// ── RoundHistory ──────────────────────────────────────────────────────────────
+
+/** Past rounds with their mode and winner (win screen and game-over screen). */
+function RoundHistory({ room }: { room: Room }) {
+  const t = useT();
+  if (room.roundHistory.length === 0) return null;
+  return (
+    <div className="win-history">
+      <div className="win-history-title">{t('win.history')}</div>
+      {room.roundHistory.map((r, i) => {
+        const rWinner = r.winnerId && room.players[r.winnerId]
+          ? room.players[r.winnerId].displayName
+          : r.winnerId === 'cooperative' ? t('common.team')
+          : r.winnerId && room.teams[r.winnerId] ? room.teams[r.winnerId].name
+          : t('win.noWinner');
+        return (
+          <div key={i} className="win-history-row">
+            <span className="win-history-round">{t('win.round', { round: r.roundNumber })}</span>
+            <span className="win-history-mode">{modeName(t, r.mode)}</span>
+            <span className="win-history-winner">{rWinner}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -633,6 +685,7 @@ interface WinScreenProps {
 }
 
 export function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, onEndGame }: WinScreenProps) {
+  const t = useT();
   const isCoopWin = winnerId === 'cooperative';
   const isCoopLoss = !winnerId && room.activeRound?.config.mode === 'cooperative';
   const isTeamWin = winnerId && room.teams[winnerId] !== undefined;
@@ -645,23 +698,23 @@ export function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, o
   let title: string;
   let subtitle: string;
   if (isCoopWin) {
-    title = 'Team Wins!';
-    subtitle = `You reached ${cardsToWin} cards together!`;
+    title = t('win.teamWins');
+    subtitle = t('win.reachedTogether', { count: cardsToWin });
   } else if (isCoopLoss) {
-    title = 'Team Lost';
-    subtitle = 'The shared token pool ran out.';
+    title = t('win.teamLost');
+    subtitle = t('win.poolEmpty');
   } else if (winnerTeam) {
-    title = isMyTeam ? 'Your Team Wins!' : `${winnerTeam.name} Wins!`;
-    subtitle = `${winnerTeam.name} reached ${cardsToWin} cards first.`;
+    title = isMyTeam ? t('win.yourTeamWins') : t('win.nameWins', { name: winnerTeam.name });
+    subtitle = t('win.reachedFirst', { name: winnerTeam.name, count: cardsToWin });
   } else if (isMe) {
-    title = 'You Win!';
-    subtitle = 'You built the perfect timeline!';
+    title = t('win.youWin');
+    subtitle = t('win.perfectTimeline');
   } else if (winner) {
-    title = `${winner.displayName} Wins!`;
-    subtitle = `${winner.displayName} reached ${cardsToWin} cards first.`;
+    title = t('win.nameWins', { name: winner.displayName });
+    subtitle = t('win.reachedFirst', { name: winner.displayName, count: cardsToWin });
   } else {
-    title = 'Game Over!';
-    subtitle = 'The deck ran out.';
+    title = t('win.gameOver');
+    subtitle = t('win.deckEmpty');
   }
 
   const isOwner = room.ownerId === sessionId;
@@ -675,36 +728,18 @@ export function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, o
       <div className="win-subtitle">{subtitle}</div>
 
       {/* Round history */}
-      {room.roundHistory.length > 0 && (
-        <div className="win-history">
-          <div className="win-history-title">Round History</div>
-          {room.roundHistory.map((r, i) => {
-            const rWinner = r.winnerId && room.players[r.winnerId]
-              ? room.players[r.winnerId].displayName
-              : r.winnerId === 'cooperative' ? 'Team' : r.winnerId && room.teams[r.winnerId]
-                ? room.teams[r.winnerId].name
-                : 'No winner';
-            return (
-              <div key={i} className="win-history-row">
-                <span className="win-history-round">Round {r.roundNumber}</span>
-                <span className="win-history-mode">{r.mode}</span>
-                <span className="win-history-winner">{rWinner}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <RoundHistory room={room} />
 
       {onBackToLobby && onLeave && <div className="win-actions">
         <button className="win-play-again" onClick={onBackToLobby}>
-          {isOwner ? '⊕ Back to Lobby' : '← Back to Lobby'}
+          {isOwner ? t('win.backToLobbyOwner') : t('win.backToLobby')}
         </button>
         <button className="win-leave" onClick={onLeave}>
-          Leave Room
+          {t('win.leaveRoom')}
         </button>
         {isOwner && onEndGame && (
           <button className="win-end-game" onClick={onEndGame}>
-            ✕ End Game
+            {t('win.endGame')}
           </button>
         )}
       </div>}
@@ -732,6 +767,7 @@ function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boole
   const { mode, spotify } = room.audio;
   const { spotifyDevices, onListSpotifyDevices } = controls;
   const linked = Boolean(spotify);
+  const t = useT();
 
   // Load the device list once the account is linked
   useEffect(() => {
@@ -741,18 +777,18 @@ function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boole
   if (!isOwner) {
     return mode === 'spotify' && spotify?.deviceName ? (
       <div className="lobby-audio-note" data-testid="audio-note">
-        🔊 Full songs play on <strong>{spotify.deviceName}</strong> via Spotify — your device stays silent.
+        {withNodes(t('audioSettings.note'), { device: <strong>{spotify.deviceName}</strong> })}
       </div>
     ) : null;
   }
 
   return (
     <div className="lobby-config-section" data-testid="audio-settings">
-      <div className="lobby-config-label">Audio</div>
+      <div className="lobby-config-label">{t('audioSettings.title')}</div>
       <div className="lobby-mode-grid">
         {([
-          { value: 'previews', label: '30s previews', desc: 'Plays on every device' },
-          { value: 'spotify', label: 'Full songs', desc: 'One Spotify device (Premium)' },
+          { value: 'previews', label: t('audioSettings.previews'), desc: t('audioSettings.previewsDesc') },
+          { value: 'spotify', label: t('audioSettings.full'), desc: t('audioSettings.fullDesc') },
         ] as const).map(o => (
           <label
             key={o.value}
@@ -775,10 +811,9 @@ function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boole
 
       {!linked && (
         <div className="lobby-local-hint">
-          Full songs play through Spotify Connect on one device of your choice (your phone, TV
-          or speaker). Everyone else&apos;s device stays silent.{' '}
+          {t('audioSettings.connectHint')}{' '}
           <button type="button" className="lobby-team-btn" onClick={controls.onConnectSpotify} data-testid="connect-spotify-btn">
-            Connect Spotify
+            {t('audioSettings.connect')}
           </button>
         </div>
       )}
@@ -786,8 +821,7 @@ function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boole
       {linked && spotify && mode === 'spotify' && (
         <>
           <div className="lobby-local-hint">
-            Connected as <strong>{spotify.accountName}</strong>. Open the Spotify app on the device
-            that should play, then pick it here.
+            {withNodes(t('audioSettings.connectedAs'), { name: <strong>{spotify.accountName}</strong> })}
           </div>
           <div className="lobby-teams-list">
             {(spotifyDevices ?? []).map(d => (
@@ -800,31 +834,31 @@ function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boole
                   {DEVICE_ICONS[d.type] ?? '🎵'} {d.name}
                 </div>
                 {d.id === spotify.deviceId ? (
-                  <span className="lobby-team-member">Playing here</span>
+                  <span className="lobby-team-member">{t('audioSettings.playingHere')}</span>
                 ) : (
                   <button type="button" className="lobby-team-btn" onClick={() => controls.onSelectSpotifyDevice(d.id)}>
-                    Use
+                    {t('audioSettings.use')}
                   </button>
                 )}
               </div>
             ))}
             {spotifyDevices?.length === 0 && (
-              <div className="lobby-local-hint">No devices found — open Spotify on your phone and refresh.</div>
+              <div className="lobby-local-hint">{t('audioSettings.noDevices')}</div>
             )}
           </div>
           <div className="lobby-create-team-row">
             <button type="button" className="lobby-team-btn" onClick={onListSpotifyDevices} data-testid="refresh-devices-btn">
-              ↻ Refresh devices
+              {t('audioSettings.refresh')}
             </button>
             <button type="button" className="lobby-team-btn leave" onClick={controls.onUnlinkSpotify}>
-              Disconnect Spotify
+              {t('audioSettings.disconnect')}
             </button>
           </div>
           {!spotify.deviceId && (
-            <div className="server-error-msg">Pick a device — until then turns use previews.</div>
+            <div className="server-error-msg">{t('audioSettings.pickDevice')}</div>
           )}
           <div className="lobby-local-hint">
-            Tip: the Spotify app shows the song title — put the phone face down or out of sight.
+            {t('audioSettings.tip')}
           </div>
         </>
       )}
@@ -834,11 +868,11 @@ function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boole
 
 // ── Lobby screen ──────────────────────────────────────────────────────────────
 
-const MODES: { value: GameMode; label: string; desc: string }[] = [
-  { value: 'original', label: 'Original', desc: '2 starting tokens, naming bonus on' },
-  { value: 'pro',      label: 'Pro',      desc: '5 starting tokens, no naming bonus' },
-  { value: 'expert',   label: 'Expert',   desc: '3 starting tokens, no naming bonus' },
-  { value: 'cooperative', label: 'Cooperative', desc: 'Shared timeline & tokens, reach target together' },
+const MODES: { value: GameMode; desc: MessageKey }[] = [
+  { value: 'original', desc: 'mode.original.desc' },
+  { value: 'pro', desc: 'mode.pro.desc' },
+  { value: 'expert', desc: 'mode.expert.desc' },
+  { value: 'cooperative', desc: 'mode.cooperative.desc' },
 ];
 
 interface LobbyScreenProps {
@@ -862,6 +896,7 @@ interface LobbyScreenProps {
 }
 
 function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, onLeaveTeam, onLeave, socketError, onPreviewPlaylist, onClearPlaylistPreview, playlistPreviewCards, playlistPreviewLoading, localPlayers, onAddLocalPlayer, onRemoveLocalPlayer, onKickPlayer, audioControls }: LobbyScreenProps) {
+  const t = useT();
   const isOwner = room.ownerId === sessionId;
   const players = Object.values(room.players);
   const [playlistLabel, setPlaylistLabel] = useState('');
@@ -920,10 +955,10 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
                 <span style={{ fontSize: 10, color: '#fbbf24' }}>★</span>
               )}
               {localIds.size > 1 && localIds.has(p.id) && (
-                <span className="lobby-local-badge" title="Plays on this device">👥</span>
+                <span className="lobby-local-badge" title={t('lobby.localBadge')}>👥</span>
               )}
               {!p.isConnected && (
-                <span className="player-disconnected-badge">offline</span>
+                <span className="player-disconnected-badge">{t('lobby.offline')}</span>
               )}
               {isOwner && p.id !== room.ownerId && <KickButton player={p} onKick={onKickPlayer} />}
             </div>
@@ -947,7 +982,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
               onClick={() => onPreviewPlaylist(playlistLabel.trim())}
               data-testid="preview-tracks-btn"
             >
-              {playlistPreviewLoading ? '…' : '🔍 Preview'}
+              {playlistPreviewLoading ? '…' : t('lobby.preview')}
             </button>
           </div>
 
@@ -959,7 +994,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
           )}
 
           <div className="lobby-config-section">
-            <div className="lobby-config-label">Game Mode</div>
+            <div className="lobby-config-label">{t('lobby.gameMode')}</div>
             <div className="lobby-mode-grid" data-testid="mode-selector">
               {MODES.map(m => (
                 <label
@@ -975,15 +1010,15 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
                     onChange={() => setMode(m.value)}
                     style={{ display: 'none' }}
                   />
-                  <div className="lobby-mode-name">{m.label}</div>
-                  <div className="lobby-mode-desc">{m.desc}</div>
+                  <div className="lobby-mode-name">{modeName(t, m.value)}</div>
+                  <div className="lobby-mode-desc">{t(m.desc)}</div>
                 </label>
               ))}
             </div>
 
             <div className="lobby-config-row">
               <label className="lobby-config-label" htmlFor="cards-to-win">
-                Cards to Win
+                {t('lobby.cardsToWin')}
               </label>
               <input
                 id="cards-to-win"
@@ -1001,7 +1036,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
 
             <div className="lobby-config-row">
               <label className="lobby-config-label" htmlFor="turn-seconds">
-                Time per Turn
+                {t('lobby.timePerTurn')}
               </label>
               <select
                 id="turn-seconds"
@@ -1013,7 +1048,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
               >
                 {TURN_SECONDS_OPTIONS.map(s => (
                   <option key={s ?? 'none'} value={s ?? ''}>
-                    {s ? `${s} seconds` : 'No limit'}
+                    {s ? t('lobby.seconds', { count: s }) : t('lobby.noLimit')}
                   </option>
                 ))}
               </select>
@@ -1021,7 +1056,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
 
             <div className="lobby-config-row">
               <label className="lobby-config-label" htmlFor="tokens-enabled">
-                Tokens Enabled
+                {t('lobby.tokensEnabled')}
               </label>
               <input
                 id="tokens-enabled"
@@ -1039,11 +1074,8 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
 
       {/* ── Hot-seat: more players on this device ── */}
       <div className="lobby-teams-section" data-testid="local-players-section">
-        <div className="lobby-config-label">Players on this device</div>
-        <div className="lobby-local-hint">
-          Someone without a phone? Add them here and share this device — everyone gets their
-          own timeline, and the screen switches to whoever is on turn.
-        </div>
+        <div className="lobby-config-label">{t('lobby.localTitle')}</div>
+        <div className="lobby-local-hint">{t('lobby.localHint')}</div>
         {localPlayers.length > 0 && (
           <div className="lobby-teams-list">
             {localPlayers.map(lp => (
@@ -1054,7 +1086,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
                   onClick={() => onRemoveLocalPlayer(lp.id)}
                   data-testid="remove-local-player-btn"
                 >
-                  Remove
+                  {t('common.remove')}
                 </button>
               </div>
             ))}
@@ -1064,7 +1096,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
           <input
             className="form-input"
             type="text"
-            placeholder="Player name…"
+            placeholder={t('lobby.playerNamePlaceholder')}
             maxLength={24}
             value={newLocalName}
             onChange={e => setNewLocalName(e.target.value)}
@@ -1078,14 +1110,14 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
             onClick={handleAddLocal}
             data-testid="add-local-player-btn"
           >
-            + Add
+            {t('common.add')}
           </button>
         </div>
       </div>
 
       {/* ── Teams section ── */}
       <div className="lobby-teams-section">
-        <div className="lobby-config-label">Teams (optional)</div>
+        <div className="lobby-config-label">{t('lobby.teamsTitle')}</div>
 
         {teams.length > 0 && (
           <div className="lobby-teams-list" data-testid="teams-list">
@@ -1107,7 +1139,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
                       onClick={() => onJoinTeam(team.id)}
                       data-testid="join-team-btn"
                     >
-                      Join
+                      {t('common.join')}
                     </button>
                   ) : (
                     <button
@@ -1115,7 +1147,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
                       onClick={onLeaveTeam}
                       data-testid="leave-team-btn"
                     >
-                      Leave
+                      {t('common.leave')}
                     </button>
                   )}
                 </div>
@@ -1128,7 +1160,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
           <input
             className="form-input"
             type="text"
-            placeholder="New team name…"
+            placeholder={t('lobby.newTeamPlaceholder')}
             maxLength={20}
             value={newTeamName}
             onChange={e => setNewTeamName(e.target.value)}
@@ -1142,13 +1174,13 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
             onClick={handleCreateTeam}
             data-testid="create-team-btn"
           >
-            + Create
+            {t('lobby.createTeam')}
           </button>
         </div>
       </div>
 
       {socketError && (
-        <div className="server-error-msg">{socketError}</div>
+        <div className="server-error-msg">{translateError(socketError, t)}</div>
       )}
 
       {isOwner ? (
@@ -1158,16 +1190,16 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
           onClick={handleStart}
           data-testid="start-round-btn"
         >
-          {starting ? 'Starting…' : '▶ Start Round'}
+          {starting ? t('lobby.starting') : t('lobby.start')}
         </button>
       ) : (
         <div className="lobby-waiting">
-          Waiting for {room.players[room.ownerId]?.displayName ?? 'host'} to start...
+          {t('lobby.waitingFor', { name: room.players[room.ownerId]?.displayName ?? t('lobby.host') })}
         </div>
       )}
 
       <button className="lobby-leave-btn" onClick={onLeave} data-testid="leave-btn">
-        ← Leave Room
+        {t('lobby.leaveRoom')}
       </button>
     </div>
   );
@@ -1280,6 +1312,7 @@ export default function GameRoom({
   playlistPreviewLoading,
   audioControls,
 }: GameRoomProps) {
+  const t = useT();
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [showFlipResult, setShowFlipResult] = useState(false);
   const [flipRevealSnapshot, setFlipRevealSnapshot] = useState<{
@@ -1311,7 +1344,7 @@ export default function GameRoom({
     ? undefined
     : localIds.find(id => isParticipantOf(id, resolvedActivePlayerId));
   const sessionId = activeLocalId ?? primaryId;
-  const viewerName = room.players[sessionId]?.displayName ?? 'You';
+  const viewerName = room.players[sessionId]?.displayName ?? t('players.you');
 
   const myTeamId = Object.entries(room.teams).find(([, t]) => t.playerIds.includes(sessionId))?.[0];
   const isSpectator = room.players[sessionId]?.isSpectator === true;
@@ -1346,14 +1379,14 @@ export default function GameRoom({
   const challengeDeadline = isInChallengePhase ? (currentTurn?.challengeDeadline ?? null) : null;
 
   const activeName = activePlayerDisplayName(room, resolvedActivePlayerId);
-  const placeHint = placedPosition === null ? 'Drag the card into a gap, or tap a gap' : 'placed';
+  const placeHint = placedPosition === null ? t('timeline.placeHint') : t('timeline.placed');
   const mainTimelineLabel = watchingOther
-    ? `${activeName.toUpperCase()}'S TIMELINE — watch where they place`
+    ? t('timeline.watchOther', { name: activeName.toUpperCase() })
     : isActivePlayer
       ? isHotSeat && !isCooperative
-        ? `${activeName.toUpperCase()}'S TIMELINE — ${placeHint}`
-        : `YOUR TIMELINE — ${placeHint}`
-      : 'TIMELINE';
+        ? t('timeline.namedHint', { name: activeName.toUpperCase(), hint: placeHint })
+        : t('timeline.yoursHint', { hint: placeHint })
+      : t('timeline.plain');
   const mainCards = watchingOther ? activeCards : myCards;
   const mainTimelineEntityId = watchingOther ? activeEntityId : timelineKey;
   const flipReveal =
@@ -1369,8 +1402,8 @@ export default function GameRoom({
       : null;
 
   const logEntries = useMemo(
-    () => renderGameLog(round?.gameLog),
-    [round?.gameLog],
+    () => renderGameLog(round?.gameLog, t),
+    [round?.gameLog, t],
   );
 
   // Everyone on this device who may shout HITSTER! on the current placement
@@ -1381,8 +1414,8 @@ export default function GameRoom({
           .filter(id => !isParticipantOf(id, resolvedActivePlayerId))
           .map(id => ({
             id,
-            label: isHotSeat ? `Challenge: ${room.players[id].displayName}` : 'Challenge',
-            doneLabel: isHotSeat ? `${room.players[id].displayName} ✓` : 'Challenged ✓',
+            label: isHotSeat ? t('challenge.buttonNamed', { name: room.players[id].displayName }) : t('challenge.button'),
+            doneLabel: isHotSeat ? t('challenge.doneNamed', { name: room.players[id].displayName }) : t('challenge.done'),
             hasChallenged: currentTurn?.challenges?.some(c => c.challengerId === id) ?? false,
           }))
       : [];
@@ -1433,8 +1466,8 @@ export default function GameRoom({
     if (prev.phase === 'place' && prev.id === resolvedActivePlayerId) return; // same turn (e.g. skip)
     const mine = isActivePlayer && !isSpectator;
     const text = mine
-      ? (isHotSeat ? `${viewerName}'s turn` : 'Your turn')
-      : `${activePlayerDisplayName(room, resolvedActivePlayerId)}'s turn`;
+      ? (isHotSeat ? t('turn.other', { name: viewerName }) : t('turn.yours'))
+      : t('turn.other', { name: activePlayerDisplayName(room, resolvedActivePlayerId) });
     setSplash(s => ({ key: (s?.key ?? 0) + 1, text, mine }));
   }, [resolvedActivePlayerId, turnPhase]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1465,29 +1498,11 @@ export default function GameRoom({
       <div className="win-screen">
         <div className="scanlines" />
         <div className="win-trophy">🎮</div>
-        <div className="win-title">Game Over</div>
-        <div className="win-subtitle">Thanks for playing!</div>
-        {room.roundHistory.length > 0 && (
-          <div className="win-history">
-            <div className="win-history-title">Round History</div>
-            {room.roundHistory.map((r, i) => {
-              const rWinner = r.winnerId && room.players[r.winnerId]
-                ? room.players[r.winnerId].displayName
-                : r.winnerId === 'cooperative' ? 'Team'
-                : r.winnerId && room.teams[r.winnerId] ? room.teams[r.winnerId].name
-                : 'No winner';
-              return (
-                <div key={i} className="win-history-row">
-                  <span className="win-history-round">Round {r.roundNumber}</span>
-                  <span className="win-history-mode">{r.mode}</span>
-                  <span className="win-history-winner">{rWinner}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="win-title">{t('gameOver.title')}</div>
+        <div className="win-subtitle">{t('gameOver.thanks')}</div>
+        <RoundHistory room={room} />
         <div className="win-actions">
-          <button className="win-leave" onClick={onLeave}>← Leave</button>
+          <button className="win-leave" onClick={onLeave}>{t('gameOver.leave')}</button>
         </div>
       </div>
     );
@@ -1514,11 +1529,12 @@ export default function GameRoom({
         <div className="scanlines" />
         <header className="game-header">
           <HitsterLogo />
-          <div className="room-code-badge">ROOM: {room.code}</div>
+          <div className="room-code-badge">{t('header.room', { code: room.code })}</div>
           <div className="game-header-actions">
+            <LanguageSwitcher />
             <MuteToggle />
             <button type="button" className="header-leave-btn" onClick={onLeave} data-testid="leave-btn">
-              Leave
+              {t('common.leave')}
             </button>
           </div>
         </header>
@@ -1557,17 +1573,18 @@ export default function GameRoom({
       {/* Header */}
       <header className="game-header">
         <HitsterLogo />
-        <div className="room-code-badge">ROOM: {room.code}</div>
+        <div className="room-code-badge">{t('header.room', { code: room.code })}</div>
         <div className="game-header-actions">
           {!isSpectator && round?.config.tokensEnabled !== false && (
             <TokenPanel
               myTokens={myTokens}
-              label={isHotSeat && !isCooperative ? `${viewerName}'s tokens` : 'Your tokens'}
+              label={isHotSeat && !isCooperative ? t('tokens.named', { name: viewerName }) : t('tokens.yours')}
             />
           )}
+          <LanguageSwitcher />
           <MuteToggle />
           <button type="button" className="header-leave-btn" onClick={onLeave} data-testid="leave-btn">
-            Leave
+            {t('common.leave')}
           </button>
         </div>
       </header>
@@ -1589,7 +1606,7 @@ export default function GameRoom({
         <div className={`center-col${showFlipResult ? ' center-col--reveal-active' : ''}`}>
           {isHotSeat && activeLocalId && currentTurn?.phase === 'place' && (
             <div className="hotseat-banner" role="status" aria-live="polite" data-testid="hotseat-banner">
-              🎮 {viewerName}&apos;s turn
+              🎮 {t('turn.other', { name: viewerName })}
             </div>
           )}
           {isSpectator && (
@@ -1598,11 +1615,9 @@ export default function GameRoom({
                 <span className="spectator-banner__icon" aria-hidden>
                   👁
                 </span>
-                Spectator mode
+                {t('spectator.title')}
               </div>
-              <p className="spectator-banner__hint">
-                You&apos;re watching this round. You&apos;ll play when the next round starts.
-              </p>
+              <p className="spectator-banner__hint">{t('spectator.hint')}</p>
             </div>
           )}
           <AudioPlayer
@@ -1618,7 +1633,7 @@ export default function GameRoom({
 
           {isCooperative && round && (round.tokens['cooperative'] ?? 0) <= 2 && (
             <div className="coop-token-warning">
-              ⚠ Only {round.tokens['cooperative'] ?? 0} shared token{(round.tokens['cooperative'] ?? 0) !== 1 ? 's' : ''} left!
+              {t('coop.fewTokens', { count: round.tokens['cooperative'] ?? 0 })}
             </div>
           )}
 
@@ -1646,7 +1661,9 @@ export default function GameRoom({
               <TimelineView
                 cards={myCards}
                 pendingCard={null}
-                label={isHotSeat ? `${viewerName.toUpperCase()}'S TIMELINE — not your turn` : 'YOUR TIMELINE — not your turn'}
+                label={isHotSeat
+                  ? t('timeline.namedNotYourTurn', { name: viewerName.toUpperCase() })
+                  : t('timeline.yoursNotYourTurn')}
                 readOnly
                 placedPosition={null}
                 selectedPosition={null}
@@ -1665,7 +1682,7 @@ export default function GameRoom({
                 disabled={selectedPosition === null}
                 onClick={handleConfirmPlace}
               >
-                CONFIRM PLACE
+                {t('actions.confirm')}
               </button>
             )}
 
@@ -1676,7 +1693,7 @@ export default function GameRoom({
                 disabled={myTokens < 1}
                 onClick={() => onSkipCard(sessionId)}
               >
-                SKIP (1🪙)
+                {t('actions.skip')}
               </button>
             )}
 
@@ -1686,9 +1703,9 @@ export default function GameRoom({
                 data-testid="buy-btn"
                 disabled={myTokens < 3}
                 onClick={() => onBuyCard(sessionId)}
-                title="Spend 3 tokens to place without hearing — your next turn will be skipped"
+                title={t('actions.buyTitle')}
               >
-                BUY (3🪙)
+                {t('actions.buy')}
               </button>
             )}
 
@@ -1697,7 +1714,7 @@ export default function GameRoom({
 
         {/* RIGHT: Game log + challenge timer */}
         <div className="right-side-panel">
-          <div className="panel-title">Game Log</div>
+          <div className="panel-title">{t('log.title')}</div>
 
           {isInChallengePhase && !isCooperative && !isSpectator && (
             <ChallengeBar deadline={challengeDeadline} />
@@ -1712,7 +1729,7 @@ export default function GameRoom({
               />
             ))}
             {logEntries.length === 0 && (
-              <div style={{ color: '#374151', fontSize: 12 }}>Game log will appear here.</div>
+              <div style={{ color: '#374151', fontSize: 12 }}>{t('log.empty')}</div>
             )}
           </div>
 
@@ -1721,14 +1738,14 @@ export default function GameRoom({
             <div style={{ marginTop: 24 }}>
               <div className="panel-title">
                 {round?.config.mode === 'pro' || round?.config.mode === 'expert'
-                  ? 'Name the Song (required to score)'
-                  : 'Name the Song (+1🪙)'}
+                  ? t('name.titleRequired')
+                  : t('name.titleBonus')}
               </div>
               <div className="name-song-form">
                 <input
                   className="name-song-input"
                   data-testid="name-song-title"
-                  placeholder="Title"
+                  placeholder={t('name.title')}
                   value={nameSongTitle}
                   onChange={e => setNameSongTitle(e.target.value)}
                 />
@@ -1737,7 +1754,7 @@ export default function GameRoom({
                 <input
                   className="name-song-input"
                   data-testid="name-song-artist"
-                  placeholder="Artist"
+                  placeholder={t('name.artist')}
                   value={nameSongArtist}
                   onChange={e => setNameSongArtist(e.target.value)}
                 />
@@ -1748,7 +1765,7 @@ export default function GameRoom({
                     className="name-song-input"
                     data-testid="name-song-year"
                     type="number"
-                    placeholder="Year"
+                    placeholder={t('name.year')}
                     value={nameSongYear}
                     onChange={e => setNameSongYear(e.target.value)}
                   />
@@ -1771,7 +1788,7 @@ export default function GameRoom({
                     setNameSongYear('');
                   }}
                 >
-                  Submit
+                  {t('name.submit')}
                 </button>
               </div>
             </div>

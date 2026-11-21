@@ -173,6 +173,7 @@ Each client schedules playback `playAt - serverNow` ms after receipt (never comp
 | Disconnect | Skip turn after 15s timeout. Remove from rotation after 2 turns missed while offline (running out of time doesn't count). |
 | Time up | Turn timer expires → the card is revealed ("Time's up", at the spot it belonged) for the reveal time, then the next turn. |
 | Game log | Coin changes are logged: naming (+1), skip (−1), buy (−3), lost challenge (−1). |
+| Language | German by default; **DE \| EN** switcher in every header (entry, lobby/round, TV), remembered per device. All texts via `t()` (`client/src/i18n/`); the server sends game-log events and English errors, the client translates. |
 
 Game modes (Original / Pro / Expert / Cooperative) are defined in `docs/REQUIREMENTS.md` Part 1.
 

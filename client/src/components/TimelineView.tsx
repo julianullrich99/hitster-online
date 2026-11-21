@@ -12,6 +12,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import type { Card, CardHidden } from '../../../shared/types';
+import { useT } from '../i18n';
 
 // ── Card tiles ───────────────────────────────────────────────────────────────
 
@@ -39,13 +40,14 @@ export function TimelineCard({ card, className = '', style }: { card: Card; clas
 }
 
 function FlipRevealAtCard({ card, correct, timedOut = false }: { card: Card; correct: boolean; timedOut?: boolean }) {
+  const t = useT();
   return (
     <div
       className={`flip-reveal-slot${correct ? ' flip-reveal-slot--correct' : ' flip-reveal-slot--wrong'}`}
       data-testid="flip-reveal"
     >
       <div className={`flip-reveal-badge${correct ? ' flip-reveal-badge--correct' : ' flip-reveal-badge--wrong'}`}>
-        {correct ? '✓ Correct!' : timedOut ? '⏱ Time\'s up!' : '✗ Wrong!'}
+        {correct ? t('reveal.correct') : timedOut ? t('reveal.timeUp') : t('reveal.wrong')}
       </div>
       <div className="flip-reveal-ring" aria-hidden />
       <TimelineCard
@@ -70,6 +72,7 @@ export function FaceDownCard({ className = '' }: { className?: string }) {
 // ── DnD pieces ───────────────────────────────────────────────────────────────
 
 function DraggablePendingCard() {
+  const t = useT();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: 'pending-card',
   });
@@ -82,7 +85,7 @@ function DraggablePendingCard() {
       {...attributes}
     >
       <FaceDownCard />
-      <div className="timeline-card-dock-label">Drag into a gap — or tap a gap</div>
+      <div className="timeline-card-dock-label">{t('timeline.dragHint')}</div>
     </div>
   );
 }
@@ -102,10 +105,11 @@ interface ChallengeUnderCardProps {
 }
 
 function ChallengeUnderCard({ challengeSeconds, challengers, onChallenge }: ChallengeUnderCardProps) {
+  const t = useT();
   return (
     <div className="timeline-challenge-panel">
       <span className="timeline-challenge-timer" aria-live="polite">
-        {challengeSeconds}s
+        {t('common.secondsShort', { count: challengeSeconds })}
       </span>
       {challengers.map(c => (
         <button

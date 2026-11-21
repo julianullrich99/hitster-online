@@ -103,13 +103,37 @@ export interface Room {
   observers?: number;
 }
 
-/** Standard game-log line (who / action / consequence). */
-export interface GameLogLine {
-  id: string;
-  who: string;
-  action: string;
-  consequence: string;
-}
+/** UI language. German is the default; the client sends it where the server renders text. */
+export type Lang = 'de' | 'en';
+
+/**
+ * A game-log event. The server sends structured events (names, counts, reasons); each client
+ * renders them in its own language. Song titles only appear in flip lines, created at reveal.
+ */
+export type GameLogEvent =
+  | { event: 'round_started'; round: number }
+  | { event: 'placed'; who: string; seconds: number }
+  | { event: 'challenged'; who: string }
+  | { event: 'revealed'; who: string; correct: boolean }
+  /** A challenger was right: `who` steals the card from `placer` */
+  | { event: 'challenge_won'; who: string; placer: string }
+  /** A challenger was wrong: `who` loses a coin */
+  | { event: 'challenge_lost'; who: string; placer: string }
+  /** Skip (−1 coin); `coins` = balance afterwards */
+  | { event: 'skipped'; who: string; coins: number }
+  /** Buy (−3 coins); `coins` = balance afterwards */
+  | { event: 'bought'; who: string; coins: number }
+  /**
+   * Correct song name. `counts`: no bonus in this mode, the card counts if placed right;
+   * `gained`: +1 coin; `max`: the pool was already full.
+   */
+  | { event: 'named'; who: string; result: 'counts' | 'gained' | 'max'; coins: number }
+  | { event: 'turn_skipped'; who: string; reason: 'disconnect' | 'timeout' }
+  | { event: 'kicked'; who: string }
+  | { event: 'spotify_fallback'; device: string };
+
+/** Standard game-log line: an event plus a unique id. */
+export type GameLogLine = GameLogEvent & { id: string };
 
 /** Flip reveal line shown after a card is revealed. */
 export interface GameLogFlipLine {
@@ -121,7 +145,7 @@ export interface GameLogFlipLine {
 export type GameLogEntry = GameLogLine | GameLogFlipLine;
 
 export function isGameLogFlipLine(entry: GameLogEntry): entry is GameLogFlipLine {
-  return 'title' in entry && 'correct' in entry;
+  return !('event' in entry) && 'title' in entry;
 }
 
 export interface ActiveRound {

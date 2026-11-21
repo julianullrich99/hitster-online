@@ -2542,6 +2542,35 @@ body {
 }
 .mute-toggle--muted { border-color: #7f1d1d; background: rgba(127, 29, 29, 0.2); }
 
+/* ── Language switcher (DE | EN) ── */
+.lang-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 32px;
+  border: 1px solid #374151;
+}
+.lang-switch-btn {
+  min-width: 32px;
+  height: 100%;
+  padding: 0 6px;
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  cursor: pointer;
+}
+.lang-switch-btn + .lang-switch-btn { border-left: 1px solid #374151; }
+.lang-switch-btn:hover { color: #e0e0ff; }
+.lang-switch-btn.is-active { background: #7c3aed; color: #fff; cursor: default; }
+.lang-switch-btn:focus-visible { outline: 2px solid #a78bfa; outline-offset: -2px; }
+
+.entry-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* ── Lobby: TV hint ── */
 .lobby-tv-hint {
   display: flex;

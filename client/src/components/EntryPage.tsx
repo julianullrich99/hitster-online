@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Room, RoomSummary } from '../../../shared/types';
 import { getSavedDisplayName, saveDisplayName, getLastRoom, type LastRoom } from '../socket/client';
+import { useT, type MessageKey } from '../i18n';
+import { translateError } from '../i18n/errors';
+import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 
 interface EntryPageProps {
   onConnectAndCreateRoom: (displayName: string, topic: string, companions: string[]) => void;
@@ -30,10 +33,10 @@ function statusBadgeClass(status: string): string {
   return 'badge-over';
 }
 
-function statusBadgeText(status: string): string {
-  if (status === 'lobby') return 'LOBBY';
-  if (status === 'round_active') return 'LIVE';
-  return 'ENDED';
+function statusBadgeKey(status: string): MessageKey {
+  if (status === 'lobby') return 'entry.status.lobby';
+  if (status === 'round_active') return 'entry.status.live';
+  return 'entry.status.ended';
 }
 
 function isRoomJoinable(status: string): boolean {
@@ -49,6 +52,7 @@ export default function EntryPage({
   serverError,
   roomJoined,
 }: EntryPageProps) {
+  const t = useT();
   const [displayName, setDisplayName] = useState(getSavedDisplayName);
   const [nameError, setNameError] = useState(false);
   const [joinCode, setJoinCode] = useState('');
@@ -163,9 +167,12 @@ export default function EntryPage({
           HITSTER
           <span className="cursor-blink" />
         </div>
-        <div className="live-dot">
-          <span className="dot-pulse" />
-          LIVE
+        <div className="entry-header-actions">
+          <div className="live-dot">
+            <span className="dot-pulse" />
+            {t('header.live')}
+          </div>
+          <LanguageSwitcher />
         </div>
       </header>
 
@@ -177,19 +184,19 @@ export default function EntryPage({
             HIT<span className="hero-title-green">STER</span>
           </div>
           <div className="hero-sub">
-            Build your timeline. Guess the decade. First to 6 songs wins.
+            {t('entry.tagline')}
           </div>
 
           {/* Name — the only identity: rejoin a room under the same name to get your seat back */}
           <div className="field">
             <div className="field-label">
               <span className="req-dot" />
-              Your name
+              {t('entry.nameLabel')}
             </div>
             <input
               className={`form-input${nameValid ? ' valid' : ''}${nameError ? ' err' : ''}`}
               type="text"
-              placeholder="e.g. Anna"
+              placeholder={t('entry.namePlaceholder')}
               autoComplete="nickname"
               maxLength={24}
               value={displayName}
@@ -197,10 +204,10 @@ export default function EntryPage({
               data-testid="display-name-input"
             />
             {nameError && (
-              <div className="err-msg">Enter your name first</div>
+              <div className="err-msg">{t('entry.nameRequired')}</div>
             )}
             <div className="field-hint">
-              Lost connection? Join the same room with the same name to continue.
+              {t('entry.nameHint')}
             </div>
           </div>
 
@@ -213,7 +220,7 @@ export default function EntryPage({
                     {name}
                     <button
                       type="button"
-                      aria-label={`Remove ${name}`}
+                      aria-label={t('entry.removeCompanion', { name })}
                       onClick={() => setCompanions(prev => prev.filter(n => n !== name))}
                     >
                       ✕
@@ -227,7 +234,7 @@ export default function EntryPage({
                 <input
                   className="form-input"
                   type="text"
-                  placeholder="Name of the person next to you"
+                  placeholder={t('entry.companionPlaceholder')}
                   maxLength={24}
                   value={companionName}
                   onChange={e => setCompanionName(e.target.value)}
@@ -241,7 +248,7 @@ export default function EntryPage({
                   onClick={addCompanion}
                   data-testid="companion-add-btn"
                 >
-                  + Add
+                  {t('common.add')}
                 </button>
               </div>
             ) : (
@@ -251,12 +258,12 @@ export default function EntryPage({
                 onClick={() => setShowCompanions(true)}
                 data-testid="companion-toggle-btn"
               >
-                👥 Someone without a phone? Play together on this device
+                {t('entry.companionToggle')}
               </button>
             )}
             {(showCompanions || companions.length > 0) && (
               <div className="field-hint">
-                Everyone gets their own timeline. When it&apos;s their turn, hand them the phone.
+                {t('entry.companionHint')}
               </div>
             )}
           </div>
@@ -268,7 +275,7 @@ export default function EntryPage({
               onClick={() => handleRejoin(lastRoom)}
               data-testid="rejoin-btn"
             >
-              ↺ Rejoin {lastRoom.roomCode} as {lastRoom.displayName}
+              {t('entry.rejoin', { code: lastRoom.roomCode, name: lastRoom.displayName })}
               {(lastRoom.localPlayers?.length ?? 0) > 0 && ` +${lastRoom.localPlayers?.length}`}
               <span className="btn-rejoin-sub">{rejoinable.topic}</span>
             </button>
@@ -282,14 +289,14 @@ export default function EntryPage({
             disabled={connecting}
             onClick={handleCreateClick}
           >
-            {connecting ? '⏳ Connecting…' : '⊕ Create a room'}
+            {connecting ? t('entry.connecting') : t('entry.createRoom')}
           </button>
 
           <div className="join-code-row">
             <input
               className="form-input"
               type="text"
-              placeholder="Room code"
+              placeholder={t('entry.roomCodePlaceholder')}
               maxLength={4}
               autoCapitalize="characters"
               value={joinCode}
@@ -303,7 +310,7 @@ export default function EntryPage({
               onClick={() => handleJoinRoom(joinCode)}
               data-testid="join-code-btn"
             >
-              Join
+              {t('common.join')}
             </button>
           </div>
 
@@ -313,15 +320,15 @@ export default function EntryPage({
             disabled={connecting || joinCode.trim().length !== 4}
             onClick={() => onObserveRoom(joinCode)}
             data-testid="open-tv-btn"
-            title="Shows the game big on this screen and plays the music — no seat needed"
+            title={t('entry.openTvTitle')}
           >
-            📺 Open as TV screen
+            {t('entry.openTv')}
           </button>
 
           {/* Server error banner */}
           {serverError && (
             <div className="server-error-msg" role="alert">
-              {serverError}
+              {translateError(serverError, t)}
             </div>
           )}
 
@@ -330,16 +337,16 @@ export default function EntryPage({
         {/* RIGHT: Room Browser */}
         <div className="rooms-col">
           <div className="rooms-header">
-            <div className="rooms-title">Active Rooms</div>
+            <div className="rooms-title">{t('entry.activeRooms')}</div>
             <div className="rooms-count">
-              {roomsLoading ? 'Loading…' : `${openRoomCount} room${openRoomCount !== 1 ? 's' : ''} open`}
+              {roomsLoading ? t('entry.loading') : t('entry.roomsOpen', { count: openRoomCount })}
             </div>
           </div>
 
           {!roomsLoading && rooms.length === 0 && (
             <div className="no-rooms">
               <div className="no-rooms-icon">🎮</div>
-              <div className="no-rooms-text">No rooms yet.<br />Be the first to create one!</div>
+              <div className="no-rooms-text">{t('entry.noRooms')}<br />{t('entry.noRoomsCta')}</div>
             </div>
           )}
 
@@ -366,8 +373,8 @@ export default function EntryPage({
               title={
                 isRoomJoinable(room.status)
                   ? room.status === 'round_active'
-                    ? 'Click to spectate'
-                    : 'Click to join'
+                    ? t('entry.clickToSpectate')
+                    : t('entry.clickToJoin')
                   : undefined
               }
             >
@@ -378,7 +385,7 @@ export default function EntryPage({
                   {room.genre && <div className="rc-genre">{room.genre}</div>}
                 </div>
                 <div className={`status-badge ${statusBadgeClass(room.status)}`}>
-                  {statusBadgeText(room.status)}
+                  {t(statusBadgeKey(room.status))}
                 </div>
               </div>
 
@@ -394,7 +401,7 @@ export default function EntryPage({
                       >
                         {i === 0 && room.leaderName ? room.leaderName[0].toUpperCase() : initial}
                       </div>
-                      {i === 0 && room.leaderName ? room.leaderName : `P${i + 1}`}
+                      {i === 0 && room.leaderName ? room.leaderName : t('entry.playerChip', { n: i + 1 })}
                     </div>
                   );
                 })}
@@ -403,9 +410,9 @@ export default function EntryPage({
               <div className="rc-progress">
                 {room.roundNumber && room.leaderCards !== undefined && room.cardsToWin ? (
                   <>
-                    <div className="rp-label">Round {room.roundNumber} · Progress</div>
+                    <div className="rp-label">{t('entry.roundProgress', { round: room.roundNumber })}</div>
                     <div className="rp-leader">
-                      {room.leaderName} — {room.leaderCards} / {room.cardsToWin} cards
+                      {t('entry.leaderProgress', { name: room.leaderName ?? '', cards: room.leaderCards, count: room.cardsToWin })}
                     </div>
                     <div className="rp-bar-wrap">
                       <div
@@ -416,9 +423,9 @@ export default function EntryPage({
                   </>
                 ) : (
                   <>
-                    <div className="rp-label">Waiting to start</div>
+                    <div className="rp-label">{t('entry.waitingToStart')}</div>
                     <div className="rp-waiting">
-                      {room.playerCount} player{room.playerCount !== 1 ? 's' : ''} in lobby
+                      {t('entry.playersInLobby', { count: room.playerCount })}
                     </div>
                   </>
                 )}
@@ -426,7 +433,7 @@ export default function EntryPage({
 
               {isRoomJoinable(room.status) && (
                 <div className="rc-join-hint">
-                  {room.status === 'round_active' ? 'CLICK TO SPECTATE' : 'CLICK TO JOIN'}
+                  {(room.status === 'round_active' ? t('entry.clickToSpectate') : t('entry.clickToJoin')).toUpperCase()}
                 </div>
               )}
             </div>
@@ -438,14 +445,14 @@ export default function EntryPage({
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Create a Room</div>
+            <div className="modal-title">{t('entry.createTitle')}</div>
             <div className="field">
-              <div className="field-label">Room Topic / Theme</div>
+              <div className="field-label">{t('entry.topicLabel')}</div>
               <input
                 ref={topicInputRef}
                 className="form-input"
                 type="text"
-                placeholder="e.g. 90s Night, Pop Classics…"
+                placeholder={t('entry.topicPlaceholder')}
                 maxLength={40}
                 value={joinTopic}
                 onChange={e => setJoinTopic(e.target.value)}
@@ -458,10 +465,10 @@ export default function EntryPage({
                 disabled={!joinTopic.trim()}
                 onClick={handleCreateSubmit}
               >
-                ⊕ Create
+                {t('entry.create')}
               </button>
               <button className="btn-cancel" onClick={() => setShowCreateModal(false)}>
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>

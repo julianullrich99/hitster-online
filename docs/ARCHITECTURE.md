@@ -52,13 +52,13 @@ Key functions:
 **Do not add I/O, timers, or Socket.io references here.**
 
 ### `server/src/game/gameLog.ts`
-Appends structured lines to `activeRound.gameLog` (placements, challenges, flips, skips). Used for the in-round log panel and late joiners.
+Appends structured events to `activeRound.gameLog` (`GameLogEvent` in `shared/types.ts`: event + names, counts, coin balance, reason — no sentences). Clients render them in their language (`client/src/game/gameLog.ts`). Flip lines carry the song title and are only created at the reveal. Used for the in-round log panel and late joiners.
 
 ### `server/src/rooms/store.ts`
 Thin wrapper around `Map<string, Room>`. Provides `get`, `set`, `delete`, `getAll`, `getSummaries`. No logic beyond storage and projection to `RoomSummary`.
 
 ### `server/src/spotify/connect.ts`
-Full-song playback via Spotify Connect (REQUIREMENTS §2.4). The one place with a *user* token: Authorization Code Flow for the room owner's Premium account, started by `GET /api/spotify/connect/login?room&session` and finished at `/api/spotify/connect/callback`. Tokens live in this module per room code and are refreshed automatically; `Room.audio` only carries the account and device names. `index.ts` calls `play()` in `startTurn` when `engine.spotifySpeaker(room)` returns a device and sends `speaker` in `turn:started` so clients stay silent; on failure the turn falls back to previews.
+Full-song playback via Spotify Connect (REQUIREMENTS §2.4). The one place with a *user* token: Authorization Code Flow for the room owner's Premium account, started by `GET /api/spotify/connect/login?room&session&lang` and finished at `/api/spotify/connect/callback`. Tokens live in this module per room code and are refreshed automatically; `Room.audio` only carries the account and device names. `index.ts` calls `play()` in `startTurn` when `engine.spotifySpeaker(room)` returns a device and sends `speaker` in `turn:started` so clients stay silent; on failure the turn falls back to previews.
 
 ### `server/src/spotify/client.ts`
 Handles Spotify Client Credentials auth (auto-refreshes token before expiry) and deck building. Returns typed `Card[]`. Because the app is in Spotify development mode, track data mostly comes from the public embed pages (`embedPreview.ts`) and the Web API is only used sparingly (playlist search, year search, original-year lookups) behind a TTL cache and a quota circuit breaker — see REQUIREMENTS §2.3. Label parsing and title cleanup live in `labels.ts` (pure). `TEST_MODE=true` substitutes mock tracks from `mockTracks.ts` so tests run without credentials.
@@ -86,6 +86,9 @@ React hook. Manages local UI state and maps Socket.io events to state updates. T
 
 ### `client/src/components/`
 Presentational components. Receive state and callbacks as props. No game logic.
+
+### `client/src/i18n/`
+UI language (German default, English). `de.ts` defines the message keys, `en.ts` is typed against them; `useT()` returns `t(key, params?)` with `{name}` placeholders and `{ one, other }` plurals. `errors.ts` translates the server's English error strings (exact text or pattern, unknown ones pass through). `LanguageSwitcher` is the DE | EN header toggle. Server-rendered Spotify login pages carry their own texts (`server/src/spotify/connectPage.ts`).
 
 ---
 

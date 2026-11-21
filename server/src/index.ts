@@ -37,6 +37,7 @@ import type {
   Room,
   Card,
   CardHidden,
+  Lang,
 } from '../../shared/types';
 import { createSpotifyClient } from './spotify/client';
 import {
@@ -44,7 +45,8 @@ import {
   isSpotifyTrackPageUrl,
   isValidSpotifyTrackId,
 } from './spotify/embedPreview';
-import { SpotifyConnect } from './spotify/connect';
+import { SpotifyConnect, SpotifyConnectError } from './spotify/connect';
+import { connectResultHtml, parseLang, type ConnectPageMessage } from './spotify/connectPage';
 import { RoomStore } from './rooms/store';
 import * as engine from './game/engine';
 import * as gameLog from './game/gameLog';
@@ -172,38 +174,42 @@ function spotifyRedirectUri(req: express.Request): string {
   return `${proto}://${req.get('host')}/api/spotify/connect/callback`;
 }
 
-function connectResultPage(res: express.Response, status: number, message: string): void {
-  const safe = message.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
-  res.status(status).type('html').send(`<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Hitster · Spotify</title>
-<style>body{font-family:system-ui,sans-serif;background:#0b0b12;color:#e5e7eb;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px;text-align:center}</style>
-</head><body><div><p style="font-size:18px">${safe}</p><p style="color:#9ca3af">You can close this tab and go back to the game.</p></div>
-<script>setTimeout(function(){window.close()},1500)</script></body></html>`);
+function connectResultPage(
+  res: express.Response,
+  status: number,
+  lang: Lang,
+  message: ConnectPageMessage,
+  params?: { name?: string },
+): void {
+  res.status(status).type('html').send(connectResultHtml(lang, message, params));
 }
 
 app.get('/api/spotify/connect/login', (req, res) => {
   const roomCode = String(req.query.room ?? '').toUpperCase();
   const sessionId = String(req.query.session ?? '');
+  const lang = parseLang(req.query.lang);
   const room = store.get(roomCode);
   if (!spotifyConnect.configured || process.env.TEST_MODE === 'true') {
-    connectResultPage(res, 503, 'Spotify is not configured on this server.');
+    connectResultPage(res, 503, lang, 'not_configured');
     return;
   }
   if (!room || room.ownerId !== sessionId) {
-    connectResultPage(res, 403, 'Only the room owner can connect Spotify.');
+    connectResultPage(res, 403, lang, 'owner_only');
     return;
   }
-  res.redirect(spotifyConnect.beginLogin(roomCode, sessionId, spotifyRedirectUri(req)));
+  res.redirect(spotifyConnect.beginLogin(roomCode, sessionId, spotifyRedirectUri(req), lang));
 });
 
 app.get('/api/spotify/connect/callback', async (req, res) => {
   const login = spotifyConnect.takeLogin(String(req.query.state ?? ''));
   if (!login) {
-    connectResultPage(res, 400, 'This Spotify login expired. Try again from the lobby.');
+    // Unknown or expired state — the language went with it, so use the default
+    connectResultPage(res, 400, parseLang(undefined), 'expired');
     return;
   }
+  const { lang } = login;
   if (req.query.error || !req.query.code) {
-    connectResultPage(res, 400, 'Spotify login was cancelled.');
+    connectResultPage(res, 400, lang, 'cancelled');
     return;
   }
   try {
@@ -211,16 +217,17 @@ app.get('/api/spotify/connect/callback', async (req, res) => {
     const room = store.get(login.roomCode);
     if (!room) {
       spotifyConnect.unlink(login.roomCode);
-      connectResultPage(res, 404, 'The room no longer exists.');
+      connectResultPage(res, 404, lang, 'room_gone');
       return;
     }
     const updated = engine.setSpotifyAccount(room, accountName);
     store.set(updated);
     io.to(room.code).emit('room:updated', updated);
-    connectResultPage(res, 200, `Spotify connected as ${accountName}.`);
+    connectResultPage(res, 200, lang, 'connected', { name: accountName });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Spotify login failed';
-    connectResultPage(res, 400, message);
+    console.warn('[Spotify Connect] login failed:', err instanceof Error ? err.message : err);
+    const code = err instanceof SpotifyConnectError ? err.code : 'other';
+    connectResultPage(res, 400, lang, code === 'other' ? 'failed' : code);
   }
 });
 

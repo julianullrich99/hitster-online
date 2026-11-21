@@ -51,6 +51,13 @@ describe('SpotifyConnect', () => {
     expect(connect.takeLogin(state)).toBeNull();
   });
 
+  it('keeps the UI language of the login for the result page (German by default)', () => {
+    const connect = new SpotifyConnect('id', 'secret', fakeFetch({}).fn);
+    const stateOf = (url: string) => new URL(url).searchParams.get('state')!;
+    expect(connect.takeLogin(stateOf(connect.beginLogin('ROOM', 'owner', 'https://x/cb', 'en')))?.lang).toBe('en');
+    expect(connect.takeLogin(stateOf(connect.beginLogin('ROOM', 'owner', 'https://x/cb')))?.lang).toBe('de');
+  });
+
   it('links a Premium account and returns its name', async () => {
     const { connect } = await linked({});
     expect(connect.isLinked('ROOM')).toBe(true);
@@ -63,7 +70,7 @@ describe('SpotifyConnect', () => {
     });
     const connect = new SpotifyConnect('id', 'secret', f.fn);
     const state = new URL(connect.beginLogin('ROOM', 'owner', 'https://x/cb')).searchParams.get('state')!;
-    await expect(connect.completeLogin(connect.takeLogin(state)!, 'code')).rejects.toThrow('Premium');
+    await expect(connect.completeLogin(connect.takeLogin(state)!, 'code')).rejects.toMatchObject({ code: 'not_premium' });
     expect(connect.isLinked('ROOM')).toBe(false);
   });
 

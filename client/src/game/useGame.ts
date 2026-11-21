@@ -13,6 +13,7 @@ import {
 } from '../socket/client';
 import type { SocketAuth, Room, Card, CardHidden, GameMode, AudioMode, SpotifyDevice } from '../../../shared/types';
 import { getServerUrl } from '../config';
+import { getLang } from '../i18n';
 
 /** Extra player sharing this device (hot-seat). Has its own socket and server identity. */
 export interface LocalPlayer {
@@ -225,6 +226,7 @@ export function useGame(): GameState {
       setTurnEndsAt(null);
       setLastFlip(null);
       setRoundEnded(null);
+      // English like server errors — translated where it's shown (i18n/errors.ts)
       setSocketError('You were removed from the room by the host.');
     });
 
@@ -616,7 +618,8 @@ export function useGame(): GameState {
   const connectSpotify = useCallback(() => {
     const roomCode = roomCodeRef.current;
     if (!roomCode) return;
-    const params = new URLSearchParams({ room: roomCode, session: getPrimarySessionId() });
+    // The login result page is rendered by the server — in this device's language
+    const params = new URLSearchParams({ room: roomCode, session: getPrimarySessionId(), lang: getLang() });
     window.open(`${getServerUrl()}/api/spotify/connect/login?${params}`, '_blank');
   }, []);
 

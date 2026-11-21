@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import type { Card } from '../../../shared/types';
 import { cardStreamUrl, fetchEmbedPreviewStream } from '../spotify';
+import { useT } from '../i18n';
 
 function formatGenres(genres?: string[]): string {
   if (!genres?.length) return '—';
@@ -16,6 +17,10 @@ interface TrackPreviewModalProps {
 }
 
 export default function TrackPreviewModal({ cards, onClose }: TrackPreviewModalProps) {
+  const t = useT();
+  // Read through a ref so a language switch doesn't restart playback
+  const tRef = useRef(t);
+  tRef.current = t;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const resolvedStreams = useRef(new Map<string, string>());
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
@@ -47,7 +52,7 @@ export default function TrackPreviewModal({ cards, onClose }: TrackPreviewModalP
       })
       .catch(() => {
         setActiveTrackId(null);
-        setResolveError('Playback blocked — try clicking play again.');
+        setResolveError(tRef.current('preview.blocked'));
       });
   }, []);
 
@@ -73,13 +78,13 @@ export default function TrackPreviewModal({ cards, onClose }: TrackPreviewModalP
       try {
         const stream = await resolveStreamUrl(card);
         if (!stream) {
-          setResolveError(`No preview available for “${card.title}”.`);
+          setResolveError(tRef.current('preview.none', { title: card.title }));
           setActiveTrackId(null);
           return;
         }
         playStream(card.trackId, stream);
       } catch {
-        setResolveError(`Could not load preview for “${card.title}”.`);
+        setResolveError(tRef.current('preview.failed', { title: card.title }));
         setActiveTrackId(null);
       } finally {
         setLoadingTrackId(null);
@@ -121,8 +126,8 @@ export default function TrackPreviewModal({ cards, onClose }: TrackPreviewModalP
         onClick={(e) => e.stopPropagation()}
       >
         <div className="track-preview-header">
-          <span className="track-preview-heading">Track preview</span>
-          <span className="track-preview-count">{cards.length} tracks</span>
+          <span className="track-preview-heading">{t('preview.heading')}</span>
+          <span className="track-preview-count">{t('preview.count', { count: cards.length })}</span>
         </div>
         {resolveError && (
           <p className="track-preview-error" role="alert">
@@ -132,10 +137,10 @@ export default function TrackPreviewModal({ cards, onClose }: TrackPreviewModalP
         <div className="track-preview-body">
           <div className="track-preview-colhead" aria-hidden="true">
             <span className="track-preview-colhead-cell" />
-            <span className="track-preview-colhead-cell">Year</span>
-            <span className="track-preview-colhead-cell">Title</span>
-            <span className="track-preview-colhead-cell">Artist</span>
-            {hasGenres && <span className="track-preview-colhead-cell track-preview-colhead-genre">Genre</span>}
+            <span className="track-preview-colhead-cell">{t('preview.year')}</span>
+            <span className="track-preview-colhead-cell">{t('preview.title')}</span>
+            <span className="track-preview-colhead-cell">{t('preview.artist')}</span>
+            {hasGenres && <span className="track-preview-colhead-cell track-preview-colhead-genre">{t('preview.genre')}</span>}
             <span className="track-preview-colhead-cell" />
           </div>
           <div className="track-preview-list">
@@ -143,10 +148,10 @@ export default function TrackPreviewModal({ cards, onClose }: TrackPreviewModalP
               const isActive = activeTrackId === card.trackId;
               const isLoading = loadingTrackId === card.trackId;
               const playLabel = isLoading
-                ? `Loading ${card.title}`
+                ? t('preview.loadingTrack', { title: card.title })
                 : isActive
-                  ? `Pause ${card.title}`
-                  : `Play ${card.title}`;
+                  ? t('preview.pause', { title: card.title })
+                  : t('preview.play', { title: card.title });
 
               return (
                 <div key={card.trackId} className="track-preview-row">
@@ -191,7 +196,7 @@ export default function TrackPreviewModal({ cards, onClose }: TrackPreviewModalP
         </div>
         <div className="track-preview-footer">
           <button type="button" className="track-preview-close-btn" onClick={handleClose}>
-            Close
+            {t('common.close')}
           </button>
         </div>
         <audio

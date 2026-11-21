@@ -14,6 +14,8 @@ import {
   activePlayerDisplayName,
   avatarColor,
 } from './GameRoom';
+import { useT, withNodes, type TFunction } from '../i18n';
+import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 
 /**
  * Observer screen (TV): the whole room at a glance, big enough to read from the sofa.
@@ -51,7 +53,7 @@ interface ScoreRow {
   offline: boolean;
 }
 
-function scoreRows(room: Room, activeEntity: string | null): ScoreRow[] {
+function scoreRows(room: Room, activeEntity: string | null, t: TFunction): ScoreRow[] {
   const round = room.activeRound;
   if (!round) {
     return Object.values(room.players)
@@ -61,7 +63,7 @@ function scoreRows(room: Room, activeEntity: string | null): ScoreRow[] {
   if (round.config.mode === 'cooperative') {
     return [{
       id: 'cooperative',
-      name: 'Team',
+      name: t('common.team'),
       cards: round.timelines.cooperative?.cards.length ?? 0,
       tokens: round.tokens.cooperative ?? 0,
       active: true,
@@ -101,6 +103,7 @@ export default function ObserverScreen({
   onDismissRoundEnd,
   onLeave,
 }: ObserverScreenProps) {
+  const t = useT();
   const round = room.activeRound;
   const currentTurn = round?.currentTurn;
   const resolvedActive = activePlayerId ?? currentTurn?.activeId ?? null;
@@ -144,7 +147,7 @@ export default function ObserverScreen({
     prevRef.current = { id: resolvedActive, phase };
     if (room.status !== 'round_active' || phase !== 'place' || !resolvedActive) return;
     if (prev.phase === 'place' && prev.id === resolvedActive) return;
-    setSplash(s => ({ key: (s?.key ?? 0) + 1, text: `${activePlayerDisplayName(room, resolvedActive)}'s turn` }));
+    setSplash(s => ({ key: (s?.key ?? 0) + 1, text: t('turn.other', { name: activePlayerDisplayName(room, resolvedActive) }) }));
   }, [resolvedActive, phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!splash) return;
@@ -157,7 +160,7 @@ export default function ObserverScreen({
     if (roundEnded && room.status === 'round_active') onDismissRoundEnd();
   }, [room.status, roundEnded, onDismissRoundEnd]);
 
-  const logEntries = useMemo(() => renderGameLog(round?.gameLog).slice(0, 14), [round?.gameLog]);
+  const logEntries = useMemo(() => renderGameLog(round?.gameLog, t).slice(0, 14), [round?.gameLog, t]);
 
   if (roundEnded) {
     return <WinScreen winnerId={roundEnded.winnerId} room={room} sessionId="" />;
@@ -167,17 +170,21 @@ export default function ObserverScreen({
     <header className="tv-header">
       <div className="logo">HITSTER</div>
       <div className="tv-join">
-        Join on <strong>{joinHost}</strong> with code <span className="tv-code">{room.code}</span>
+        {withNodes(t('tv.joinOn'), {
+          host: <strong>{joinHost}</strong>,
+          code: <span className="tv-code">{room.code}</span>,
+        })}
       </div>
       <div className="game-header-actions">
+        <LanguageSwitcher />
         <MuteToggle />
-        <button type="button" className="header-leave-btn" onClick={onLeave}>Close</button>
+        <button type="button" className="header-leave-btn" onClick={onLeave}>{t('common.close')}</button>
       </div>
     </header>
   );
 
   const tapBanner = needsTap && (
-    <div className="tv-tap-banner" role="status">🔊 Click or press any key once to enable sound on this screen</div>
+    <div className="tv-tap-banner" role="status">{t('tv.tapForSound')}</div>
   );
 
   // Lobby / between rounds: big join instructions
@@ -191,8 +198,8 @@ export default function ObserverScreen({
         <div className="tv-lobby">
           <div className="tv-lobby-title">{room.topic}</div>
           <div className="tv-lobby-join">
-            <div>Open <strong>{joinHost}</strong></div>
-            <div>and enter the code</div>
+            <div>{withNodes(t('tv.open'), { host: <strong>{joinHost}</strong> })}</div>
+            <div>{t('tv.enterCode')}</div>
             <div className="tv-lobby-code">{room.code}</div>
           </div>
           <div className="tv-lobby-players">
@@ -206,7 +213,7 @@ export default function ObserverScreen({
             })}
           </div>
           <div className="tv-lobby-wait">
-            {players.length === 0 ? 'Waiting for players…' : 'Waiting for the host to start the round…'}
+            {players.length === 0 ? t('tv.waitingPlayers') : t('tv.waitingHost')}
           </div>
         </div>
       </div>
@@ -223,7 +230,7 @@ export default function ObserverScreen({
     ? { position: reveal.position, card: reveal.card, correct: reveal.correct, timedOut: reveal.timedOut }
     : null;
   const isFlipped = phase === 'flip' || reveal !== null;
-  const rows = scoreRows(room, activeEntity);
+  const rows = scoreRows(room, activeEntity, t);
   const cardsToWin = round.config.cardsToWin;
 
   return (
@@ -235,7 +242,7 @@ export default function ObserverScreen({
 
       <div className="tv-main">
         <aside className="tv-scores">
-          <div className="panel-title">Scores · {cardsToWin} to win</div>
+          <div className="panel-title">{t('tv.scores', { count: cardsToWin })}</div>
           {rows.map((r, i) => (
             <div
               key={r.id}
@@ -245,7 +252,7 @@ export default function ObserverScreen({
               <span className="tv-score-name">{r.name}</span>
               <span className="tv-score-cards" key={r.cards}>{r.cards}</span>
               {round.config.tokensEnabled && (
-                <span className="tv-score-tokens" aria-label={`${r.tokens} coins`}>
+                <span className="tv-score-tokens" aria-label={t('common.coins', { count: r.tokens })}>
                   {Array.from({ length: 5 }, (_, k) => (
                     <span key={k} className={`token-dot${k >= r.tokens ? ' empty' : ''}`} />
                   ))}
@@ -261,7 +268,7 @@ export default function ObserverScreen({
         <section className="tv-center">
           <div className="tv-turn">
             <div className="tv-turn-name" key={activeName}>
-              {isCooperative ? 'Team turn' : `${activeName}'s turn`}
+              {isCooperative ? t('turn.team') : t('turn.other', { name: activeName })}
             </div>
             {phase === 'place' && turnEndsAt !== null && (
               <div className="tv-turn-countdown">
@@ -286,7 +293,9 @@ export default function ObserverScreen({
             <TimelineView
               cards={cards}
               pendingCard={null}
-              label={isCooperative ? 'TEAM TIMELINE' : `${activePlayerDisplayName(room, timelineEntity).toUpperCase()}'S TIMELINE`}
+              label={isCooperative
+                ? t('timeline.team')
+                : t('timeline.of', { name: activePlayerDisplayName(room, timelineEntity).toUpperCase() })}
               readOnly
               placedPosition={placedPosition}
               selectedPosition={null}
@@ -300,7 +309,7 @@ export default function ObserverScreen({
         </section>
 
         <aside className="tv-log">
-          <div className="panel-title">Game Log</div>
+          <div className="panel-title">{t('log.title')}</div>
           <div className="game-log">
             {logEntries.map(entry => (
               <div key={entry.id} className="log-entry" dangerouslySetInnerHTML={{ __html: entry.html }} />

@@ -75,6 +75,10 @@ _What the system does from a player's perspective. No technical detail._
 - On phones (≤640px) the timeline is vertical — oldest at the top, gaps as full-width bars.
 - Cards can be placed by drag & drop or by **tapping a gap** and confirming.
 
+### 1.3.3 Language
+- The UI is in **German by default**, switchable to **English** with a compact **DE | EN** toggle in the header of the entry page, the lobby/round screens and the observer screen (TV). The choice is per device (`localStorage` `hitster_lang`).
+- Everything a player reads is translated: UI texts, game modes, the game log (the server sends structured events, each client renders them in its own language), server error messages, and the Spotify Connect login result page (the client passes `lang` to the login URL).
+
 ### 1.4 Round Configuration
 Before each round, the room owner sets:
 

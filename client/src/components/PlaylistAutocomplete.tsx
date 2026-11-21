@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { DEFAULT_PLAYLIST_LABEL, PLAYLIST_SUGGESTIONS } from '../data/playlistSuggestions';
+import { useT } from '../i18n';
 
 const MAX_SUGGESTIONS = 10;
 
@@ -16,6 +17,7 @@ export function PlaylistAutocomplete({
   disabled,
   'data-testid': testId,
 }: PlaylistAutocompleteProps) {
+  const t = useT();
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -79,7 +81,7 @@ export function PlaylistAutocomplete({
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
-        placeholder={`e.g. ${DEFAULT_PLAYLIST_LABEL} or Spotify playlist URL`}
+        placeholder={t('playlist.placeholder', { example: DEFAULT_PLAYLIST_LABEL })}
         value={value}
         disabled={disabled}
         onChange={e => {

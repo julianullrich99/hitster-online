@@ -67,9 +67,9 @@ Follow this order — skipping steps creates type mismatches or logic/UI splits:
 4. **Wire the Socket.io event** in `server/src/index.ts`
    - Add the event name + payload to `ClientToServerEvents` or `ServerToClientEvents` in `shared/types.ts`
    - Register the handler in `index.ts`
-   - Append to `activeRound.gameLog` via `gameLog.ts` when the event should appear in the UI log
+   - Append to `activeRound.gameLog` via `gameLog.ts` when the event should appear in the UI log (add a `GameLogEvent` variant, render it in `client/src/game/gameLog.ts`)
 5. **Handle the event client-side** in `client/src/game/useGame.ts`
-6. **Build the UI** in `client/src/components/`
+6. **Build the UI** in `client/src/components/` — every visible text goes through `t()` with keys in both `client/src/i18n/de.ts` and `en.ts`
 
 ---
 
