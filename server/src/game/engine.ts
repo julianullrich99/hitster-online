@@ -178,6 +178,14 @@ export function kickPlayer(room: Room, playerId: string): KickResult {
   return { room: next, removedEntityId: entityId, wasOnTurn };
 }
 
+/** A player is connected; a team counts as connected while any member is. */
+export function isEntityConnected(room: Room, entityId: string): boolean {
+  const player = room.players[entityId];
+  if (player) return player.isConnected;
+  const team = room.teams[entityId];
+  return !!team && team.playerIds.some(id => room.players[id]?.isConnected);
+}
+
 /** Mark player disconnected; return updated room */
 export function markDisconnected(room: Room, playerId: string): Room {
   if (!room.players[playerId]) return room;

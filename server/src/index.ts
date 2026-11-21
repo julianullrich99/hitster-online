@@ -48,6 +48,7 @@ import { SpotifyConnect } from './spotify/connect';
 import { RoomStore } from './rooms/store';
 import * as engine from './game/engine';
 import * as gameLog from './game/gameLog';
+import * as naming from './game/naming';
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -118,6 +119,10 @@ const turnSpeakers = new Map<string, { deviceName: string }>();
 
 // playerId → pending disconnect-skip timer (so it can be cancelled on reconnect)
 const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// roomCode → player/team whose turn is due but was offline when it came up (no card drawn yet).
+// Their return starts the turn; without this a quick rejoin cancelled the skip and the round hung.
+const waitingTurns = new Map<string, string>();
 
 // ---------------------------------------------------------------------------
 // HTTP routes — API endpoints must be registered before the SPA catch-all
@@ -259,6 +264,7 @@ function purgeRoomRuntime(roomCode: string): void {
   pendingCards.delete(roomCode);
   pendingChallenges.delete(roomCode);
   liveDecks.delete(roomCode);
+  waitingTurns.delete(roomCode);
   const pendingDelete = pendingDeletes.get(roomCode);
   if (pendingDelete !== undefined) {
     clearTimeout(pendingDelete);
@@ -294,7 +300,10 @@ function autoSkipActiveTurn(
   const cur = store.get(roomCode);
   if (!cur?.activeRound) return;
   if (cur.activeRound.turnOrder[cur.activeRound.turnIndex] !== playerId) return;
-  if (cur.activeRound.currentTurn?.phase !== 'place') return;
+  // Either mid-turn (card drawn, place phase) or a turn that never started because they were offline
+  const waiting = waitingTurns.get(roomCode) === playerId;
+  if (!waiting && cur.activeRound.currentTurn?.phase !== 'place') return;
+  waitingTurns.delete(roomCode);
 
   const withMissed = engine.incrementMissedTurns(
     gameLog.logAutoSkip(cur, playerId, reason),
@@ -471,11 +480,13 @@ async function startTurn(roomCode: string): Promise<void> {
     return;
   }
 
-  // If active player is disconnected, schedule auto-skip
-  if (!room.players[activeId]?.isConnected) {
+  // If the player (or every member of the team) on turn is offline, wait for them or skip
+  if (!engine.isEntityConnected(room, activeId)) {
+    waitingTurns.set(roomCode, activeId);
     scheduleDisconnectSkip(roomCode, activeId);
     return;
   }
+  waitingTurns.delete(roomCode);
 
   const { card, hidden: baseHidden, remaining } = engine.drawCard(deck);
   const speaker = await playOnSpeaker(roomCode, card);
@@ -673,6 +684,16 @@ io.on('connection', (socket) => {
 
       socket.emit('room:joined', { roomCode: updatedRoom.code, room: updatedRoom, sessionId });
       io.to(updatedRoom.code).emit('room:updated', updatedRoom);
+
+      // Their turn came up while they were away: start it now instead of waiting for the skip
+      const waitingFor = waitingTurns.get(updatedRoom.code);
+      if (waitingFor && engine.isEntityConnected(updatedRoom, waitingFor)) {
+        waitingTurns.delete(updatedRoom.code);
+        const skipTimer = disconnectTimers.get(waitingFor);
+        if (skipTimer) { clearTimeout(skipTimer); disconnectTimers.delete(waitingFor); }
+        void startTurn(updatedRoom.code);
+        return;
+      }
       void emitTurnSnapshot(socket, updatedRoom);
     } catch (err) {
       socket.emit('error', err instanceof Error ? err.message : 'Failed to join room');
@@ -749,6 +770,7 @@ io.on('connection', (socket) => {
       clearFlipAdvanceTimer(roomCode);
       pendingCards.delete(roomCode);
       pendingChallenges.delete(roomCode);
+      waitingTurns.delete(roomCode);
     }
 
     store.set(updated);
@@ -945,8 +967,7 @@ io.on('connection', (socket) => {
     const card = pendingCards.get(session.roomCode);
     if (!card) return;
 
-    const norm = (s: string) => s.toLowerCase().trim();
-    const titleArtistMatch = norm(data.title) === norm(card.title) && norm(data.artist) === norm(card.artist);
+    const titleArtistMatch = naming.titleMatches(data.title, card.title) && naming.artistMatches(data.artist, card.artist);
     const mode = room.activeRound.config.mode;
 
     // Expert requires exact year too

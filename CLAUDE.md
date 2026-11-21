@@ -166,7 +166,7 @@ Each client schedules playback `playAt - serverNow` ms after receipt (never comp
 | Hot-seat | Extra players "on this device" (lobby). One socket per local player; the screen follows whoever is on turn. |
 | Token: skip | Spend 1 to discard current card, draw new one |
 | Token: buy | Spend 3 to place a card directly (before hearing song). Skip next turn. |
-| Token: earn | Name song title + artist correctly = +1 token (max 5) |
+| Token: earn | Name song title + artist correctly = +1 token (max 5). Lenient match (`server/src/game/naming.ts`): case/accents/punctuation, bracketed or dashed extras, small typos; one of several artists is enough. |
 | Win | First to 6 correct cards on timeline |
 | Deck empty | Player/team with most cards wins. Tiebreaker: highest avg release year. |
 | Disconnect | Skip turn after 15s timeout. Remove from rotation after 2 missed turns. |
