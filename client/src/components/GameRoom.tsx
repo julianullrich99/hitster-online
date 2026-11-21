@@ -66,6 +66,34 @@ function activePlayerDisplayName(room: Room, activePlayerId: string | null): str
   return '...';
 }
 
+/** Time left to place, counted on this device's clock (turnEndsAt is already converted). */
+function TurnCountdown({ endsAt, totalSeconds }: { endsAt: number; totalSeconds: number | null }) {
+  const [msLeft, setMsLeft] = useState(() => Math.max(0, endsAt - Date.now()));
+
+  useEffect(() => {
+    const tick = () => setMsLeft(Math.max(0, endsAt - Date.now()));
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [endsAt]);
+
+  const seconds = Math.ceil(msLeft / 1000);
+  const label = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const fraction = totalSeconds ? Math.min(1, msLeft / (totalSeconds * 1000)) : null;
+  const urgent = seconds <= 10;
+
+  return (
+    <div className={`turn-countdown${urgent ? ' turn-countdown--urgent' : ''}`} data-testid="turn-countdown">
+      <span className="turn-countdown-time" aria-label={`${seconds} seconds left`}>{label}</span>
+      {fraction !== null && (
+        <span className="turn-countdown-bar" aria-hidden>
+          <span className="turn-countdown-fill" style={{ width: `${fraction * 100}%` }} />
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Owner-only remove button; asks first because it also removes players who are still here. */
 function KickButton({ player, onKick }: { player: Player; onKick: (playerId: string) => void }) {
   return (
@@ -106,6 +134,8 @@ interface PlayerListProps {
   localIds: string[];
   /** Set for the room owner: remove another player */
   onKick?: (playerId: string) => void;
+  /** Local-clock deadline while the card is being placed; null without a limit or after placing */
+  turnEndsAt: number | null;
 }
 
 function PlayerList({
@@ -116,6 +146,7 @@ function PlayerList({
   sessionId,
   localIds,
   onKick,
+  turnEndsAt,
 }: PlayerListProps) {
   const isHotSeat = localIds.length > 1;
   const players = Object.values(room.players).filter((p) => !p.isSpectator);
@@ -178,6 +209,9 @@ function PlayerList({
             <div className="sidebar-turn-who">
               {isMyTurn && !isHotSeat ? 'your turn' : `${activeTurnLabel}'s turn`}
             </div>
+            {turnEndsAt !== null && (
+              <TurnCountdown endsAt={turnEndsAt} totalSeconds={round.config.turnSeconds} />
+            )}
           </div>
         </div>
       )}
@@ -1091,6 +1125,8 @@ export interface GameRoomProps {
   playAt: number | null;
   speaker: { deviceName: string } | null;
   timelineLength: number;
+  /** Local-clock deadline of the current turn (null = no limit) */
+  turnEndsAt: number | null;
   lastFlip: {
     card: Card;
     correct: boolean;
@@ -1135,6 +1171,7 @@ export default function GameRoom({
   streamUrl,
   playAt,
   speaker,
+  turnEndsAt,
   lastFlip,
   roundEnded,
   sessionId: primaryId,
@@ -1433,6 +1470,7 @@ export default function GameRoom({
           sessionId={sessionId}
           localIds={localIds}
           onKick={room.ownerId === primaryId ? onKickPlayer : undefined}
+          turnEndsAt={currentTurn?.phase === 'place' ? turnEndsAt : null}
         />
 
         {/* CENTER: Gameplay */}

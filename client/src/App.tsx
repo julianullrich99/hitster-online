@@ -31,6 +31,7 @@ export default function App() {
       playAt={game.playAt}
       speaker={game.speaker}
       timelineLength={game.timelineLength}
+      turnEndsAt={game.turnEndsAt}
       lastFlip={game.lastFlip}
       roundEnded={game.roundEnded}
       sessionId={game.sessionId}

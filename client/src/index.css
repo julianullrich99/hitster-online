@@ -706,6 +706,36 @@ body {
 .sidebar-turn-status--you .sidebar-turn-who {
   color: #fbbf24;
 }
+.turn-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+}
+.turn-countdown-time {
+  font-size: 14px;
+  color: #e0e0ff;
+  font-variant-numeric: tabular-nums;
+}
+.turn-countdown-bar {
+  display: block;
+  width: 100%;
+  max-width: 160px;
+  height: 4px;
+  background: #1e1e3a;
+  overflow: hidden;
+}
+.turn-countdown-fill {
+  display: block;
+  height: 100%;
+  background: #a78bfa;
+  transition: width 0.25s linear;
+}
+.sidebar-turn-status--you .turn-countdown-time { color: #fbbf24; }
+.sidebar-turn-status--you .turn-countdown-fill { background: #fbbf24; }
+.turn-countdown--urgent .turn-countdown-time { color: #f87171; }
+.turn-countdown--urgent .turn-countdown-fill { background: #f87171; }
 .player-item {
   display: flex;
   align-items: center;

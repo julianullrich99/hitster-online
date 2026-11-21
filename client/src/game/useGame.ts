@@ -217,7 +217,8 @@ export function useGame(): GameState {
       // Convert to the local clock: device clocks are often off by seconds, and comparing
       // server time against Date.now() delayed or dropped playback entirely.
       setPlayAt(pa > 0 ? Date.now() + Math.min(Math.max(0, pa - serverNow), 5_000) : null);
-      setTurnEndsAt(te);
+      // Same clock-skew handling as playAt: keep the remaining time, measured on this device
+      setTurnEndsAt(te !== null ? Date.now() + Math.max(0, te - serverNow) : null);
       setTimelineLength(tl);
       setLastFlip(null);
       // New turns start in place phase; mid-turn join snapshots must keep challenge/flip state.
