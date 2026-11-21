@@ -60,6 +60,9 @@ export interface GameState {
   rejoinLastRoom: (lastRoom: LastRoom) => void;
   /** Owner removes a player from the room */
   kickPlayer: (playerId: string) => void;
+  /** This device is an observer screen (TV): it shows the room and plays audio, holds no seat */
+  isObserver: boolean;
+  observeRoom: (roomCode: string) => void;
   addLocalPlayer: (name: string) => void;
   removeLocalPlayer: (id: string) => void;
   leaveRoom: () => void;
@@ -117,6 +120,8 @@ export function useGame(): GameState {
   const [socketError, setSocketError] = useState<string | null>(null);
   const [playlistPreviewCards, setPlaylistPreviewCards] = useState<Card[] | null>(null);
   const [playlistPreviewLoading, setPlaylistPreviewLoading] = useState(false);
+  const [isObserver, setIsObserver] = useState(false);
+  const observerRef = useRef(false);
 
   // Room we are in — used to rejoin automatically after the socket reconnects
   // (phone screen lock, flaky Wi-Fi), otherwise the player would stay "offline".
@@ -149,7 +154,28 @@ export function useGame(): GameState {
     };
 
     socket.on('connect', () => {
-      if (roomCodeRef.current) socket.emit('room:join', { roomCode: roomCodeRef.current });
+      if (!roomCodeRef.current) return;
+      if (observerRef.current) socket.emit('room:observe', { roomCode: roomCodeRef.current });
+      else socket.emit('room:join', { roomCode: roomCodeRef.current });
+    });
+
+    socket.on('room:observing', ({ room: r, roomCode }) => {
+      roomCodeRef.current = roomCode;
+      observerRef.current = true;
+      setIsObserver(true);
+      setRoom(r);
+      setSocketError(null);
+      const hydrated = hydrateTurnFromRoom(r);
+      setActivePlayerId(hydrated.activePlayerId);
+      setCurrentCard(hydrated.currentCard);
+      setPreviewUrl(hydrated.previewUrl);
+      setStreamUrl(hydrated.streamUrl);
+      // A reload of the TV goes straight back to this room
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tv', roomCode);
+        window.history.replaceState(null, '', url);
+      } catch { /* ignore */ }
     });
 
     socket.on('room:created', ({ room: r, roomCode, sessionId: id }) => {
@@ -376,12 +402,14 @@ export function useGame(): GameState {
       console.error('[hitster socket error]', msg);
       setSocketError(typeof msg === 'string' ? msg : (msg as { message?: string })?.message ?? 'An error occurred');
       setPlaylistPreviewLoading(false);
+      if (!roomCodeRef.current) observerRef.current = false; // a failed TV open
     });
 
     return () => {
       socket.off('connect');
       socket.off('room:created');
       socket.off('room:joined');
+      socket.off('room:observing');
       socket.off('room:updated');
       socket.off('player:kicked');
       socket.off('round:started');
@@ -439,6 +467,14 @@ export function useGame(): GameState {
     if (reconnect) socket.disconnect();
     ensureConnected(() => socket.emit('room:join', { roomCode: lastRoom.roomCode }));
   }, [applySocketAuth, ensureConnected]);
+
+  const observeRoom = useCallback((roomCode: string) => {
+    const code = roomCode.trim().toUpperCase();
+    if (!code) return;
+    observerRef.current = true;
+    socket.auth = { sessionId: getPrimarySessionId(), displayName: 'TV' };
+    ensureConnected(() => socket.emit('room:observe', { roomCode: code }));
+  }, [ensureConnected]);
 
   const kickPlayer = useCallback((playerId: string) => {
     socket.emit('room:kick', { playerId });
@@ -624,6 +660,8 @@ export function useGame(): GameState {
     connectAndJoinRoom,
     rejoinLastRoom,
     kickPlayer,
+    isObserver,
+    observeRoom,
     addLocalPlayer,
     removeLocalPlayer,
     leaveRoom,

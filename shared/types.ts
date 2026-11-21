@@ -99,6 +99,8 @@ export interface Room {
   roundHistory: RoundSummary[];
   audio: RoomAudio;
   activeRound?: ActiveRound;
+  /** Connected observer screens (TV) — they watch and play audio but hold no seat */
+  observers?: number;
 }
 
 /** Standard game-log line (who / action / consequence). */
@@ -176,6 +178,9 @@ export interface ServerToClientEvents {
 
   /** Emitted to creator after room:create succeeds */
   'room:created': (data: { roomCode: string; room: Room; sessionId: string }) => void;
+
+  /** Emitted to an observer screen (TV) after room:observe succeeds */
+  'room:observing': (data: { roomCode: string; room: Room }) => void;
 
   /**
    * Emitted to joiner after room:join succeeds. `sessionId` is the identity the server
@@ -262,6 +267,9 @@ export interface ClientToServerEvents {
 
   /** Join an existing room by code */
   'room:join': (data: { roomCode: string }) => void;
+
+  /** Open an observer screen (TV) for a room: receives everything, holds no seat */
+  'room:observe': (data: { roomCode: string }) => void;
 
   /** Leave the room for good (removes the player in lobby; marks offline mid-round) */
   'room:leave': () => void;

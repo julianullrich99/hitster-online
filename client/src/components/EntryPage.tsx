@@ -6,6 +6,8 @@ interface EntryPageProps {
   onConnectAndCreateRoom: (displayName: string, topic: string, companions: string[]) => void;
   onConnectAndJoinRoom: (displayName: string, roomCode: string, companions: string[]) => void;
   onRejoinLastRoom: (lastRoom: LastRoom) => void;
+  /** Open this device as the room's TV / observer screen */
+  onObserveRoom: (roomCode: string) => void;
   serverUrl?: string;
   serverError?: string | null;
   roomJoined?: Room | null;
@@ -42,6 +44,7 @@ export default function EntryPage({
   onConnectAndCreateRoom,
   onConnectAndJoinRoom,
   onRejoinLastRoom,
+  onObserveRoom,
   serverUrl,
   serverError,
   roomJoined,
@@ -303,6 +306,17 @@ export default function EntryPage({
               Join
             </button>
           </div>
+
+          <button
+            type="button"
+            className="btn-tv-open"
+            disabled={connecting || joinCode.trim().length !== 4}
+            onClick={() => onObserveRoom(joinCode)}
+            data-testid="open-tv-btn"
+            title="Shows the game big on this screen and plays the music — no seat needed"
+          >
+            📺 Open as TV screen
+          </button>
 
           {/* Server error banner */}
           {serverError && (

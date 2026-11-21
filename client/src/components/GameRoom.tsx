@@ -14,7 +14,7 @@ import { PlaylistAutocomplete } from './PlaylistAutocomplete';
 import { TimelineView } from './TimelineView';
 import { renderGameLog } from '../game/gameLog';
 import { fetchEmbedPreviewStream, turnPlayableStream } from '../spotify';
-import { gameAudio } from '../audio/gameAudio';
+import { gameAudio, isDeviceMuted, setDeviceMuted } from '../audio/gameAudio';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,14 +23,14 @@ const AVATAR_COLORS = [
   '#60a5fa', '#fb923c', '#c084fc', '#34d399', '#f472b6',
 ];
 
-function avatarColor(name: string): string {
+export function avatarColor(name: string): string {
   let sum = 0;
   for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
 
 /** Timeline/token key for the player whose turn it is. */
-function activeEntityIdFromRoom(room: Room, activePlayerId: string): string {
+export function activeEntityIdFromRoom(room: Room, activePlayerId: string): string {
   if (room.activeRound?.config.mode === 'cooperative') return 'cooperative';
   if (room.useTeams) {
     const teamEntry = Object.entries(room.teams).find(([, t]) =>
@@ -59,7 +59,7 @@ function sortTeamsMeFirst(teams: Team[], sessionId: string): Team[] {
   });
 }
 
-function activePlayerDisplayName(room: Room, activePlayerId: string | null): string {
+export function activePlayerDisplayName(room: Room, activePlayerId: string | null): string {
   if (!activePlayerId) return '...';
   if (room.players[activePlayerId]) return room.players[activePlayerId].displayName;
   if (room.teams[activePlayerId]) return room.teams[activePlayerId].name;
@@ -67,7 +67,7 @@ function activePlayerDisplayName(room: Room, activePlayerId: string | null): str
 }
 
 /** Time left to place, counted on this device's clock (turnEndsAt is already converted). */
-function TurnCountdown({ endsAt, totalSeconds }: { endsAt: number; totalSeconds: number | null }) {
+export function TurnCountdown({ endsAt, totalSeconds }: { endsAt: number; totalSeconds: number | null }) {
   const [msLeft, setMsLeft] = useState(() => Math.max(0, endsAt - Date.now()));
 
   useEffect(() => {
@@ -95,7 +95,7 @@ function TurnCountdown({ endsAt, totalSeconds }: { endsAt: number; totalSeconds:
 }
 
 /** Short "YOUR TURN" / "ANNA'S TURN" splash when a new turn starts — overlays, never blocks input. */
-function TurnSplash({ text, mine }: { text: string; mine: boolean }) {
+export function TurnSplash({ text, mine }: { text: string; mine: boolean }) {
   return (
     <div className={`turn-splash${mine ? ' turn-splash--mine' : ''}`} role="status" aria-live="polite">
       <div className="turn-splash-text">{text}</div>
@@ -106,7 +106,7 @@ function TurnSplash({ text, mine }: { text: string; mine: boolean }) {
 const CONFETTI_COLORS = ['#fbbf24', '#4ade80', '#a78bfa', '#f472b6', '#60a5fa', '#fb923c'];
 
 /** CSS-only confetti burst; positions come from the index so renders are stable. */
-function Confetti({ pieces = 60 }: { pieces?: number }) {
+export function Confetti({ pieces = 60 }: { pieces?: number }) {
   return (
     <div className="confetti" aria-hidden>
       {Array.from({ length: pieces }, (_, i) => {
@@ -131,6 +131,43 @@ function Confetti({ pieces = 60 }: { pieces?: number }) {
         );
       })}
     </div>
+  );
+}
+
+/** How to put the game on a TV: open the observer URL there. */
+function TvHint({ room }: { room: Room }) {
+  const tvUrl = `${window.location.origin}/?tv=${room.code}`;
+  const count = room.observers ?? 0;
+  return (
+    <div className="lobby-tv-hint" data-testid="tv-hint">
+      <span className="lobby-tv-icon" aria-hidden>📺</span>
+      <div>
+        {count > 0 ? (
+          <div className="lobby-tv-title">{count === 1 ? 'TV screen connected' : `${count} TV screens connected`}</div>
+        ) : (
+          <div className="lobby-tv-title">Show the game on a TV</div>
+        )}
+        <div className="lobby-tv-url">Open <strong>{tvUrl.replace(/^https?:\/\//, '')}</strong> on the TV</div>
+      </div>
+    </div>
+  );
+}
+
+/** Sound on/off for this device only (e.g. phones stay quiet while the TV plays). */
+export function MuteToggle() {
+  const [muted, setMuted] = useState(isDeviceMuted);
+  return (
+    <button
+      type="button"
+      className={`mute-toggle${muted ? ' mute-toggle--muted' : ''}`}
+      aria-pressed={muted}
+      aria-label={muted ? 'Sound off on this device — tap to turn on' : 'Sound on — tap to mute this device'}
+      title={muted ? 'Sound off on this device' : 'Sound on'}
+      data-testid="mute-toggle"
+      onClick={() => { setDeviceMuted(!muted); setMuted(!muted); }}
+    >
+      {muted ? '🔇' : '🔊'}
+    </button>
   );
 }
 
@@ -323,7 +360,7 @@ interface AudioPlayerProps {
   isActivePlayer: boolean;
 }
 
-function AudioPlayer({
+export function AudioPlayer({
   previewUrl,
   streamUrl,
   playAt,
@@ -559,7 +596,7 @@ interface ChallengeBarProps {
   deadline: number | null;
 }
 
-function ChallengeBar({ deadline }: ChallengeBarProps) {
+export function ChallengeBar({ deadline }: ChallengeBarProps) {
   const [seconds, setSeconds] = useState<number>(CHALLENGE_WINDOW_MS / 1000);
 
   useEffect(() => {
@@ -589,12 +626,13 @@ interface WinScreenProps {
   winnerId: string | null;
   room: Room;
   sessionId: string;
-  onBackToLobby: () => void;
-  onLeave: () => void;
-  onEndGame: () => void;
+  /** Omitted on the observer screen (TV), which shows no buttons */
+  onBackToLobby?: () => void;
+  onLeave?: () => void;
+  onEndGame?: () => void;
 }
 
-function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, onEndGame }: WinScreenProps) {
+export function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, onEndGame }: WinScreenProps) {
   const isCoopWin = winnerId === 'cooperative';
   const isCoopLoss = !winnerId && room.activeRound?.config.mode === 'cooperative';
   const isTeamWin = winnerId && room.teams[winnerId] !== undefined;
@@ -657,19 +695,19 @@ function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, onEndGam
         </div>
       )}
 
-      <div className="win-actions">
+      {onBackToLobby && onLeave && <div className="win-actions">
         <button className="win-play-again" onClick={onBackToLobby}>
           {isOwner ? '⊕ Back to Lobby' : '← Back to Lobby'}
         </button>
         <button className="win-leave" onClick={onLeave}>
           Leave Room
         </button>
-        {isOwner && (
+        {isOwner && onEndGame && (
           <button className="win-end-game" onClick={onEndGame}>
             ✕ End Game
           </button>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -892,6 +930,8 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
           );
         })}
       </div>
+
+      <TvHint room={room} />
 
       {isOwner && (
         <>
@@ -1475,9 +1515,12 @@ export default function GameRoom({
         <header className="game-header">
           <HitsterLogo />
           <div className="room-code-badge">ROOM: {room.code}</div>
-          <button type="button" className="header-leave-btn" onClick={onLeave} data-testid="leave-btn">
-            Leave
-          </button>
+          <div className="game-header-actions">
+            <MuteToggle />
+            <button type="button" className="header-leave-btn" onClick={onLeave} data-testid="leave-btn">
+              Leave
+            </button>
+          </div>
         </header>
         <LobbyScreen
           room={room}
@@ -1522,6 +1565,7 @@ export default function GameRoom({
               label={isHotSeat && !isCooperative ? `${viewerName}'s tokens` : 'Your tokens'}
             />
           )}
+          <MuteToggle />
           <button type="button" className="header-leave-btn" onClick={onLeave} data-testid="leave-btn">
             Leave
           </button>

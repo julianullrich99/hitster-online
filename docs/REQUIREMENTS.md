@@ -63,6 +63,13 @@ _What the system does from a player's perspective. No technical detail._
 - During the challenge window, each local player who is not placing gets their own **challenge** button.
 - Hidden information (blurred album art for the active player) is not meaningful on a shared screen and is accepted as such.
 
+- **Shared phone:** on the entry page a player can add more people "on this device" before joining or creating a room (e.g. 10 players, 8 phones). They join together; a rejoin restores all of them.
+
+### 1.3.1a Observer Screen (TV)
+- Any device can open a room as an **observer screen** — entry page "Open as TV screen" with the room code, or the link `/?tv=<CODE>` (shown in the lobby). It holds no seat and cannot act.
+- Lobby: big join instructions (address + code) and the joined players. Round: scoreboard (cards, coins, progress, active player), turn name + countdown, now playing / reveal, the active timeline with placement and reveal, and the game log. Round end: win screen.
+- The TV plays the turn audio like every device. Each device has a **sound on/off** toggle (remembered per browser), so phones can stay quiet while the TV plays.
+
 ### 1.3.2 Devices & Layout
 - The UI is responsive: desktop/TV (three columns, larger cards on ≥1600px), tablet and phone (single scrolling column, scoreboard strip, sticky action bar).
 - On phones (≤640px) the timeline is vertical — oldest at the top, gaps as full-width bars.

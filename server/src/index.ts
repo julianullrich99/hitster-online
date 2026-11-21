@@ -82,6 +82,18 @@ const FLIP_REVEAL_DISPLAY_MS =
 
 // socketId → { sessionId, roomCode }
 const socketSession = new Map<string, { sessionId: string; roomCode: string }>();
+// socketId → roomCode for observer screens (TV); they are not players
+const observerSockets = new Map<string, string>();
+
+function setObserverCount(roomCode: string): void {
+  const room = store.get(roomCode);
+  if (!room) return;
+  const observers = [...observerSockets.values()].filter(c => c === roomCode).length;
+  if ((room.observers ?? 0) === observers) return;
+  const updated = { ...room, observers };
+  store.set(updated);
+  io.to(roomCode).emit('room:updated', updated);
+}
 
 // roomCode → remaining deck
 const liveDecks = new Map<string, ReturnType<typeof engine.drawCard>['remaining']>();
@@ -735,6 +747,20 @@ io.on('connection', (socket) => {
   });
 
   // ------------------------------------------------------------------
+  // room:observe — TV / observer screen
+  // ------------------------------------------------------------------
+  socket.on('room:observe', (data) => {
+    const room = store.get(String(data.roomCode ?? '').toUpperCase());
+    if (!room) { socket.emit('error', 'Room not found'); return; }
+    socket.join(room.code);
+    observerSockets.set(socket.id, room.code);
+    setObserverCount(room.code);
+    const current = store.get(room.code) ?? room;
+    socket.emit('room:observing', { roomCode: current.code, room: current });
+    void emitTurnSnapshot(socket, current);
+  });
+
+  // ------------------------------------------------------------------
   // room:leave
   // ------------------------------------------------------------------
   socket.on('room:leave', () => {
@@ -1199,6 +1225,13 @@ io.on('connection', (socket) => {
   // ------------------------------------------------------------------
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id} (session: ${sessionId})`);
+
+    const observedRoom = observerSockets.get(socket.id);
+    if (observedRoom) {
+      observerSockets.delete(socket.id);
+      setObserverCount(observedRoom);
+      return;
+    }
 
     const session = socketSession.get(socket.id);
     socketSession.delete(socket.id);

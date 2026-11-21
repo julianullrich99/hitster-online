@@ -52,3 +52,24 @@ export function installAudioUnlock(): void {
   window.addEventListener('keydown', handler, true);
   window.addEventListener('touchend', handler, true);
 }
+
+// ── Per-device mute ──────────────────────────────────────────────────────────
+// With a TV playing the songs, phones can stay quiet. Remembered per browser; the turn
+// still "plays" (timers, progress), only the sound is off.
+
+const MUTE_KEY = 'hitster_muted';
+
+function readMuted(): boolean {
+  try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; }
+}
+
+if (gameAudio) gameAudio.muted = readMuted();
+
+export function isDeviceMuted(): boolean {
+  return gameAudio?.muted ?? false;
+}
+
+export function setDeviceMuted(muted: boolean): void {
+  if (gameAudio) gameAudio.muted = muted;
+  try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* storage blocked */ }
+}

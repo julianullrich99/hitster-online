@@ -163,7 +163,8 @@ Each client schedules playback `playAt - serverNow` ms after receipt (never comp
 | Identity | Name only, unique per room. Joining with an offline player's name takes over that seat. |
 | Kick | Owner removes any other player (`room:kick` → broadcast `player:kicked`). Mid-round: out of turn order with timeline/tokens; their turn is dropped. |
 | Quick rejoin | Last room + name + sessionId in `localStorage`; entry page offers a one-click rejoin while the room exists. |
-| Hot-seat | Extra players "on this device" (lobby). One socket per local player; the screen follows whoever is on turn. |
+| Hot-seat / shared phone | Extra players "on this device" (entry page or lobby). One socket per local player; the screen follows whoever is on turn; restored on rejoin. |
+| Observer (TV) | `room:observe` → `room:observing`; no seat, counted in `room.observers`. Opened via `/?tv=CODE`. Per-device mute toggle (`gameAudio.setDeviceMuted`). |
 | Token: skip | Spend 1 to discard current card, draw new one |
 | Token: buy | Spend 3: the current card goes straight into the correct spot (no challenge, counts in Pro/Expert), then the reveal. Skip next turn. |
 | Token: earn | Name song title + artist correctly = +1 token (max 5). Lenient match (`server/src/game/naming.ts`): case/accents/punctuation, bracketed or dashed extras, small typos; one of several artists is enough. |
