@@ -585,12 +585,15 @@ function resolveAndAdvance(roomCode: string): void {
     return;
   }
 
+  // Store the flip now so joins and kicks during the reveal build on it
+  store.set(flippedWithLog);
   clearFlipAdvanceTimer(roomCode);
   const timer = setTimeout(() => {
     flipAdvanceTimers.delete(roomCode);
     const current = store.get(roomCode);
     if (!current?.activeRound || current.status !== 'round_active') return;
-    const advancedRoom = engine.advanceTurn(flippedWithLog);
+    // Latest state, not the flip snapshot: players may have joined or been removed meanwhile
+    const advancedRoom = engine.advanceTurn(current);
     store.set(advancedRoom);
     io.to(roomCode).emit('room:updated', advancedRoom);
     void startTurn(roomCode);
@@ -704,6 +707,60 @@ io.on('connection', (socket) => {
     ) {
       scheduleDisconnectSkip(session.roomCode, sessionId);
     }
+  });
+
+  // ------------------------------------------------------------------
+  // room:kick — owner removes a player, online or offline
+  // ------------------------------------------------------------------
+  socket.on('room:kick', (data) => {
+    const session = socketSession.get(socket.id);
+    if (!session) return;
+    const room = store.get(session.roomCode);
+    if (!room) return;
+    if (room.ownerId !== sessionId) { socket.emit('error', 'Only the room owner can remove players'); return; }
+
+    const target = room.players[data.playerId];
+    let result: engine.KickResult;
+    try {
+      result = engine.kickPlayer(room, data.playerId);
+    } catch (err) {
+      socket.emit('error', err instanceof Error ? err.message : 'Failed to remove player');
+      return;
+    }
+
+    const roomCode = room.code;
+    const kickedId = data.playerId;
+    let updated = result.room;
+    if (room.status === 'round_active' && target) updated = gameLog.logKick(updated, target.displayName);
+
+    const pendingDisconnect = disconnectTimers.get(kickedId);
+    if (pendingDisconnect) { clearTimeout(pendingDisconnect); disconnectTimers.delete(kickedId); }
+    const challenges = pendingChallenges.get(roomCode);
+    if (challenges) pendingChallenges.set(roomCode, challenges.filter(c => c.challengerId !== kickedId));
+
+    // Their turn ends unplayed: drop the drawn card and every timer, then start the next turn
+    if (result.wasOnTurn) {
+      if (result.removedEntityId) {
+        const t = disconnectTimers.get(result.removedEntityId);
+        if (t) { clearTimeout(t); disconnectTimers.delete(result.removedEntityId); }
+      }
+      clearPlaceTurnTimer(roomCode);
+      clearChallengeTimer(roomCode);
+      clearFlipAdvanceTimer(roomCode);
+      pendingCards.delete(roomCode);
+      pendingChallenges.delete(roomCode);
+    }
+
+    store.set(updated);
+    // Tell the room first (the kicked device listens for its own id), then detach its sockets
+    io.to(roomCode).emit('player:kicked', { playerId: kickedId });
+    for (const [socketId, s] of socketSession) {
+      if (s.sessionId !== kickedId || s.roomCode !== roomCode) continue;
+      socketSession.delete(socketId);
+      io.sockets.sockets.get(socketId)?.leave(roomCode);
+    }
+    io.to(roomCode).emit('room:updated', updated);
+    if (result.wasOnTurn && updated.status === 'round_active') void startTurn(roomCode);
   });
 
   // ------------------------------------------------------------------
@@ -1086,6 +1143,12 @@ io.on('connection', (socket) => {
 
     const room = store.get(session.roomCode);
     if (!room) return;
+
+    // A stale socket closing late (phone dropped, player already rejoined) must not mark them offline
+    const stillConnected = [...socketSession.values()].some(
+      s => s.sessionId === sessionId && s.roomCode === session.roomCode,
+    );
+    if (stillConnected) return;
 
     const updatedRoom = engine.markDisconnected(room, sessionId);
     store.set(updatedRoom);

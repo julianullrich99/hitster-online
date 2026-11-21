@@ -25,6 +25,41 @@ export function saveDisplayName(name: string): void {
   localStorage.setItem(NAME_KEY, name);
 }
 
+const LAST_ROOM_KEY = 'hitster_last_room';
+
+/**
+ * The room this browser was last in, kept across reloads and closed tabs so the entry
+ * page can offer a one-click rejoin. The session id lets the rejoin take the seat back
+ * even while the server still holds the old (dropped) connection.
+ */
+export interface LastRoom {
+  roomCode: string;
+  sessionId: string;
+  displayName: string;
+}
+
+export function getLastRoom(): LastRoom | null {
+  try {
+    const raw = localStorage.getItem(LAST_ROOM_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LastRoom>;
+    if (typeof parsed.roomCode !== 'string' || typeof parsed.sessionId !== 'string' || typeof parsed.displayName !== 'string') {
+      return null;
+    }
+    return { roomCode: parsed.roomCode, sessionId: parsed.sessionId, displayName: parsed.displayName };
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastRoom(lastRoom: LastRoom): void {
+  try { localStorage.setItem(LAST_ROOM_KEY, JSON.stringify(lastRoom)); } catch { /* storage blocked */ }
+}
+
+export function clearLastRoom(): void {
+  try { localStorage.removeItem(LAST_ROOM_KEY); } catch { /* storage blocked */ }
+}
+
 /** Persist the identity the server bound us to (changes when we took over a namesake). */
 export function setPrimarySessionId(id: string): void {
   sessionStorage.setItem(SESSION_KEY, id);

@@ -45,6 +45,8 @@ _What the system does from a player's perspective. No technical detail._
 - Only the room owner can configure rounds and start the game.
 - Maximum **12 players** or **6 teams** per room.
 - **Leave** removes the player from the room between rounds (ownership passes to the next connected player); mid-round they stay on the board as offline so they can rejoin by name.
+- **Kick** (owner only): the owner can remove any other player, online or offline, from the lobby list or the in-game player list (after a confirmation). Mid-round the player leaves the turn order together with their timeline and tokens (in team mode the team stays in play until its last member is removed); if it was their turn, the turn is dropped and the next one starts. The removed device returns to the entry page; joining again makes them a new player.
+- **Quick rejoin**: the browser remembers the last room, name and session (`localStorage`). While that room exists, the entry page offers "Rejoin <code> as <name>", which takes the seat back even if the server still holds the old, dropped connection.
 - When **every participant is offline** (no open Socket.io connection), the room is removed from the server after a short grace period (~60s; 5s in test mode), including mid-round and game-over rooms.
 
 ### 1.3 Teams

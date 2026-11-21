@@ -244,6 +244,9 @@ export interface ServerToClientEvents {
   /** Spotify Connect devices of the linked account — emitted only to the owner who asked */
   'audio:devices': (data: { devices: SpotifyDevice[] }) => void;
 
+  /** Broadcast when the owner removes a player — that player's device returns to the entry page */
+  'player:kicked': (data: { playerId: string }) => void;
+
   /** Error — emitted only to the socket that caused it */
   'error': (message: string) => void;
 }
@@ -260,6 +263,9 @@ export interface ClientToServerEvents {
 
   /** Leave the room for good (removes the player in lobby; marks offline mid-round) */
   'room:leave': () => void;
+
+  /** Owner removes a player (online or offline) from the room */
+  'room:kick': (data: { playerId: string }) => void;
 
   /** Owner starts the round */
   'round:start': (data: { playlistLabel?: string; mode: GameMode; cardsToWin?: number; turnSeconds?: number | null; tokensEnabled?: boolean }) => void;

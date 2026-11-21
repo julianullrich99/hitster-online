@@ -99,7 +99,11 @@ export function findPlayerByName(room: Room, displayName: string): Player | unde
 export function removePlayer(room: Room, playerId: string): Room {
   if (!room.players[playerId]) return room;
   if (room.status === 'round_active') return markDisconnected(room, playerId);
+  return dropPlayer(room, playerId);
+}
 
+/** Delete the player from the room, their teams (dropping emptied teams) and ownership. */
+function dropPlayer(room: Room, playerId: string): Room {
   const { [playerId]: _removed, ...players } = room.players;
   const teams = Object.fromEntries(
     Object.entries(removePlayerFromTeams(room.teams, playerId)).filter(([, t]) => t.playerIds.length > 0)
@@ -110,6 +114,68 @@ export function removePlayer(room: Room, playerId: string): Room {
     ownerId = next?.id ?? ownerId;
   }
   return { ...room, players, teams, useTeams: room.useTeams && Object.keys(teams).length > 0, ownerId };
+}
+
+export interface KickResult {
+  room: Room;
+  /**
+   * Turn-order entry (player id, or team id once the team is empty) that left the round,
+   * and whether it was the one on turn — the caller must then abort that turn.
+   */
+  removedEntityId: string | null;
+  wasOnTurn: boolean;
+}
+
+/**
+ * Owner removes a player for good. Between rounds this is the same as leaving; mid-round
+ * the player also leaves the turn order (with their timeline and tokens, or their team's
+ * once it is empty). Rejoining later makes them a new player.
+ */
+export function kickPlayer(room: Room, playerId: string): KickResult {
+  if (!room.players[playerId]) throw new Error('Player is not in this room');
+  if (playerId === room.ownerId) throw new Error('The room owner cannot be removed');
+
+  const round = room.activeRound;
+  if (room.status !== 'round_active' || !round) {
+    return { room: dropPlayer(room, playerId), removedEntityId: null, wasOnTurn: false };
+  }
+
+  const mode = round.config.mode;
+  const teamId = Object.entries(room.teams).find(([, t]) => t.playerIds.includes(playerId))?.[0];
+  const teamEmptied = room.useTeams && mode !== 'cooperative' && teamId !== undefined
+    && room.teams[teamId].playerIds.length === 1;
+  const entityId = room.useTeams && mode !== 'cooperative'
+    ? (teamEmptied ? teamId : null)
+    : (round.turnOrder.includes(playerId) ? playerId : null);
+
+  if (entityId !== null && round.turnOrder.length === 1 && round.turnOrder[0] === entityId) {
+    throw new Error('Cannot remove the last player in the round — end the game instead');
+  }
+
+  const { [playerId]: _removed, ...players } = room.players;
+  const teams = room.useTeams && teamId
+    ? Object.fromEntries(
+        Object.entries(removePlayerFromTeams(room.teams, playerId)).filter(([id, t]) => id !== teamId || t.playerIds.length > 0),
+      )
+    : room.teams;
+  let next: Room = { ...room, players, teams };
+  if (entityId === null) return { room: next, removedEntityId: null, wasOnTurn: false };
+
+  const wasOnTurn = round.turnOrder[round.turnIndex] === entityId;
+  next = removeFromTurnOrder(next, entityId);
+  const ar = next.activeRound!;
+  const { [entityId]: _t, ...timelines } = ar.timelines;
+  const { [entityId]: _k, ...tokens } = ar.tokens;
+  next = {
+    ...next,
+    activeRound: {
+      ...ar,
+      timelines: mode === 'cooperative' ? ar.timelines : timelines,
+      tokens: mode === 'cooperative' ? ar.tokens : tokens,
+      pendingSkips: ar.pendingSkips?.filter(id => id !== entityId),
+    },
+  };
+  return { room: next, removedEntityId: entityId, wasOnTurn };
 }
 
 /** Mark player disconnected; return updated room */

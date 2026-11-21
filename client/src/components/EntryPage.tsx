@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Room, RoomSummary } from '../../../shared/types';
-import { getSavedDisplayName, saveDisplayName } from '../socket/client';
+import { getSavedDisplayName, saveDisplayName, getLastRoom, type LastRoom } from '../socket/client';
 
 interface EntryPageProps {
   onConnectAndCreateRoom: (displayName: string, topic: string) => void;
   onConnectAndJoinRoom: (displayName: string, roomCode: string) => void;
+  onRejoinLastRoom: (lastRoom: LastRoom) => void;
   serverUrl?: string;
   serverError?: string | null;
   roomJoined?: Room | null;
@@ -40,6 +41,7 @@ function isRoomJoinable(status: string): boolean {
 export default function EntryPage({
   onConnectAndCreateRoom,
   onConnectAndJoinRoom,
+  onRejoinLastRoom,
   serverUrl,
   serverError,
   roomJoined,
@@ -53,6 +55,8 @@ export default function EntryPage({
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const topicInputRef = useRef<HTMLInputElement>(null);
+  // Read on every render: a kick or leave clears it while this page is shown
+  const lastRoom = getLastRoom();
 
   // Clear connecting spinner when room is joined or an error arrives
   useEffect(() => {
@@ -119,6 +123,18 @@ export default function EntryPage({
     setJoinTopic('');
   }
 
+  function handleRejoin(saved: LastRoom) {
+    if (connecting) return;
+    setConnecting(true);
+    setDisplayName(saved.displayName);
+    onRejoinLastRoom(saved);
+  }
+
+  // Offer the rejoin only while that room still exists
+  const rejoinable = lastRoom
+    ? rooms.find(r => r.code === lastRoom.roomCode && isRoomJoinable(r.status)) ?? null
+    : null;
+
   const openRoomCount = rooms.filter(r => r.status !== 'game_over').length;
 
   return (
@@ -172,6 +188,18 @@ export default function EntryPage({
               Lost connection? Join the same room with the same name to continue.
             </div>
           </div>
+
+          {lastRoom && rejoinable && (
+            <button
+              className="btn btn-rejoin"
+              disabled={connecting}
+              onClick={() => handleRejoin(lastRoom)}
+              data-testid="rejoin-btn"
+            >
+              ↺ Rejoin {lastRoom.roomCode} as {lastRoom.displayName}
+              <span className="btn-rejoin-sub">{rejoinable.topic}</span>
+            </button>
+          )}
 
           <hr className="form-divider" />
 

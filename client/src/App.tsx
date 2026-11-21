@@ -14,6 +14,7 @@ export default function App() {
         serverUrl={serverUrl}
         onConnectAndCreateRoom={game.connectAndCreateRoom}
         onConnectAndJoinRoom={game.connectAndJoinRoom}
+        onRejoinLastRoom={game.rejoinLastRoom}
         serverError={game.socketError}
         roomJoined={game.room}
       />
@@ -36,6 +37,7 @@ export default function App() {
       localPlayers={game.localPlayers}
       onAddLocalPlayer={game.addLocalPlayer}
       onRemoveLocalPlayer={game.removeLocalPlayer}
+      onKickPlayer={game.kickPlayer}
       socketError={game.socketError}
       onStartRound={game.startRound}
       onPlaceCard={game.placeCard}

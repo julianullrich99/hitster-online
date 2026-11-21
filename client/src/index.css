@@ -275,6 +275,25 @@ body {
   box-shadow: 0 0 20px rgba(124, 58, 237, 0.5);
 }
 
+.btn-rejoin {
+  background: rgba(74, 222, 128, 0.08);
+  border-color: #4ade80;
+  color: #4ade80;
+  flex-direction: column;
+  gap: 2px;
+}
+.btn-rejoin:not(:disabled):hover {
+  background: rgba(74, 222, 128, 0.14);
+  box-shadow: 0 0 14px rgba(74, 222, 128, 0.25);
+}
+.btn-rejoin-sub {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  color: #9ca3af;
+}
+
 .btn-join {
   background: transparent;
   border-color: #4ade80;
@@ -735,6 +754,31 @@ body {
 .player-item.disconnected {
   opacity: 0.45;
 }
+
+/* Owner-only "remove player" button (lobby chips and in-game player list) */
+.kick-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: #9ca3af;
+  background: transparent;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.kick-btn:hover,
+.kick-btn:focus-visible {
+  color: #f87171;
+  border-color: #f87171;
+}
+.player-item.disconnected .kick-btn { opacity: 1; }
 
 .player-disconnected-badge {
   font-size: 9px;

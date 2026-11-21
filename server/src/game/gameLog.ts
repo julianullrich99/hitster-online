@@ -105,6 +105,10 @@ export function logAutoSkip(
   return logAction(room, who, 'turn skipped', consequence);
 }
 
+export function logKick(room: Room, playerName: string): Room {
+  return logAction(room, playerName, 'was removed by the host', 'Left the round');
+}
+
 export function logSpotifyFallback(room: Room, deviceName: string): Room {
   return logAction(room, 'Spotify', `couldn't play on ${deviceName}`, 'Playing the preview on every device');
 }

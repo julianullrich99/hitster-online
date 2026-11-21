@@ -25,6 +25,7 @@ import {
   endGame,
   findPlayerByName,
   removePlayer,
+  kickPlayer,
   setAudioMode,
   setSpotifyAccount,
   setSpotifyDevice,
@@ -1362,5 +1363,95 @@ describe('audio output', () => {
 
   it('picking a device needs a linked account', () => {
     expect(() => setSpotifyDevice(createRoom('p1', 'Alice', 'T'), 'dev1', 'Phone')).toThrow();
+  });
+});
+
+describe('kickPlayer', () => {
+  const deck = Array.from({ length: 30 }, (_, i) => makeCard(`k-${i}`, 1960 + i));
+
+  function threePlayerRound(): Room {
+    let room = createRoom('p1', 'Alice', 'Test');
+    room = addPlayer(room, 'p2', 'Bob');
+    room = addPlayer(room, 'p3', 'Cara');
+    return initRound(room, defaultConfig, deck).room;
+  }
+
+  it('removes the player completely in the lobby', () => {
+    let room = createRoom('p1', 'Alice', 'Test');
+    room = addPlayer(room, 'p2', 'Bob');
+    const result = kickPlayer(room, 'p2');
+    expect(result.room.players.p2).toBeUndefined();
+    expect(result.removedEntityId).toBeNull();
+  });
+
+  it('refuses to remove the owner or an unknown player', () => {
+    const room = addPlayer(createRoom('p1', 'Alice', 'Test'), 'p2', 'Bob');
+    expect(() => kickPlayer(room, 'p1')).toThrow();
+    expect(() => kickPlayer(room, 'nobody')).toThrow();
+  });
+
+  it('mid-round removes a waiting player from turn order, timelines and tokens', () => {
+    const room = threePlayerRound();
+    const ar = room.activeRound!;
+    const waiting = ar.turnOrder.find((id, i) => i !== ar.turnIndex && id !== 'p1')!;
+    const activeBefore = ar.turnOrder[ar.turnIndex];
+
+    const result = kickPlayer(room, waiting);
+    const after = result.room.activeRound!;
+    expect(result.room.players[waiting]).toBeUndefined();
+    expect(after.turnOrder).not.toContain(waiting);
+    expect(after.timelines[waiting]).toBeUndefined();
+    expect(after.tokens[waiting]).toBeUndefined();
+    expect(after.turnOrder[after.turnIndex]).toBe(activeBefore);
+    expect(result.wasOnTurn).toBe(false);
+  });
+
+  it('mid-round reports when the kicked player was on turn and points at the next one', () => {
+    const base = threePlayerRound();
+    const order = base.activeRound!.turnOrder;
+    const target = order.find(id => id !== 'p1')!;
+    const idx = order.indexOf(target);
+    const room: Room = { ...base, activeRound: { ...base.activeRound!, turnIndex: idx } };
+
+    const result = kickPlayer(room, target);
+    const after = result.room.activeRound!;
+    expect(result.wasOnTurn).toBe(true);
+    expect(result.removedEntityId).toBe(target);
+    expect(after.turnOrder[after.turnIndex]).toBe(order[(idx + 1) % order.length]);
+  });
+
+  it('removes a spectator without touching the round', () => {
+    const room = addPlayer(threePlayerRound(), 'p4', 'Dan');
+    const result = kickPlayer(room, 'p4');
+    expect(result.removedEntityId).toBeNull();
+    expect(result.room.activeRound!.turnOrder).toEqual(room.activeRound!.turnOrder);
+  });
+
+  it('team mode keeps the team in play until its last member is removed', () => {
+    let room = createRoom('p1', 'Alice', 'Test');
+    room = addPlayer(room, 'p2', 'Bob');
+    room = addPlayer(room, 'p3', 'Cara');
+    room = createTeam(room, 'tA', 'A', 'p1');
+    room = createTeam(room, 'tB', 'B', 'p2');
+    room = joinTeam(room, 'tB', 'p3');
+    room = { ...room, useTeams: true };
+    room = initRound(room, defaultConfig, deck).room;
+
+    const first = kickPlayer(room, 'p2');
+    expect(first.removedEntityId).toBeNull();
+    expect(first.room.activeRound!.turnOrder).toContain('tB');
+
+    const second = kickPlayer(first.room, 'p3');
+    expect(second.removedEntityId).toBe('tB');
+    expect(second.room.activeRound!.turnOrder).toEqual(['tA']);
+    expect(second.room.teams.tB).toBeUndefined();
+  });
+
+  it('refuses to remove the last participant of a round', () => {
+    let room = addPlayer(createRoom('p1', 'Alice', 'Test'), 'p2', 'Bob');
+    room = initRound(room, defaultConfig, deck).room;
+    room = { ...room, players: { ...room.players, p1: { ...room.players.p1, isSpectator: true } } };
+    const solo: Room = { ...room, activeRound: { ...room.activeRound!, turnOrder: ['p2'], turnIndex: 0 } };
+    expect(() => kickPlayer(solo, 'p2')).toThrow(/last player/);
   });
 });

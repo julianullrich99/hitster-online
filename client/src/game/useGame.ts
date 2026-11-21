@@ -5,9 +5,12 @@ import {
   getPrimarySessionId,
   saveDisplayName,
   setPrimarySessionId,
+  saveLastRoom,
+  clearLastRoom,
   type GameSocket,
+  type LastRoom,
 } from '../socket/client';
-import type { Room, Card, CardHidden, GameMode, AudioMode, SpotifyDevice } from '../../../shared/types';
+import type { SocketAuth, Room, Card, CardHidden, GameMode, AudioMode, SpotifyDevice } from '../../../shared/types';
 import { getServerUrl } from '../config';
 
 /** Extra player sharing this device (hot-seat). Has its own socket and server identity. */
@@ -50,6 +53,10 @@ export interface GameState {
   unlinkSpotify: () => void;
   connectAndCreateRoom: (displayName: string, topic: string) => void;
   connectAndJoinRoom: (displayName: string, roomCode: string) => void;
+  /** Take back the seat from the last room this browser was in */
+  rejoinLastRoom: (lastRoom: LastRoom) => void;
+  /** Owner removes a player from the room */
+  kickPlayer: (playerId: string) => void;
   addLocalPlayer: (name: string) => void;
   removeLocalPlayer: (id: string) => void;
   leaveRoom: () => void;
@@ -111,13 +118,26 @@ export function useGame(): GameState {
   // Room we are in — used to rejoin automatically after the socket reconnects
   // (phone screen lock, flaky Wi-Fi), otherwise the player would stay "offline".
   const roomCodeRef = useRef<string | null>(null);
+  const sessionIdRef = useRef(sessionId);
   const localSocketsRef = useRef(new Map<string, GameSocket>());
 
   useEffect(() => {
     const adoptIdentity = (id: string, code: string) => {
       roomCodeRef.current = code;
+      sessionIdRef.current = id;
       setPrimarySessionId(id);
       setSessionId(id);
+      const displayName = (socket.auth as SocketAuth | undefined)?.displayName ?? '';
+      saveLastRoom({ roomCode: code, sessionId: id, displayName });
+    };
+
+    const dropLocalPlayer = (id: string) => {
+      const localSocket = localSocketsRef.current.get(id);
+      if (!localSocket) return;
+      localSocketsRef.current.delete(id);
+      localSocket.removeAllListeners();
+      localSocket.disconnect();
+      setLocalPlayers(prev => prev.filter(p => p.id !== id));
     };
 
     socket.on('connect', () => {
@@ -149,6 +169,29 @@ export function useGame(): GameState {
 
     socket.on('room:updated', (r) => {
       setRoom(r);
+    });
+
+    socket.on('player:kicked', ({ playerId }) => {
+      if (localSocketsRef.current.has(playerId)) {
+        dropLocalPlayer(playerId);
+        return;
+      }
+      if (playerId !== sessionIdRef.current) return;
+      // Removed by the host: back to the entry page, no automatic rejoin
+      roomCodeRef.current = null;
+      clearLastRoom();
+      for (const id of [...localSocketsRef.current.keys()]) dropLocalPlayer(id);
+      setRoom(null);
+      setCurrentCard(null);
+      setActivePlayerId(null);
+      setPreviewUrl(null);
+      setStreamUrl(null);
+      setPlayAt(null);
+      setSpeaker(null);
+      setTurnEndsAt(null);
+      setLastFlip(null);
+      setRoundEnded(null);
+      setSocketError('You were removed from the room by the host.');
     });
 
     socket.on('round:started', ({ room: r }) => {
@@ -329,6 +372,7 @@ export function useGame(): GameState {
       socket.off('room:created');
       socket.off('room:joined');
       socket.off('room:updated');
+      socket.off('player:kicked');
       socket.off('round:started');
       socket.off('turn:started');
       socket.off('turn:placed');
@@ -370,6 +414,21 @@ export function useGame(): GameState {
     const code = roomCode.trim().toUpperCase();
     ensureConnected(() => socket.emit('room:join', { roomCode: code }));
   }, [applySocketAuth, ensureConnected]);
+
+  const rejoinLastRoom = useCallback((lastRoom: LastRoom) => {
+    // The server binds the identity at handshake — reconnect if this socket has another one
+    const reconnect = socket.connected && (socket.auth as SocketAuth | undefined)?.sessionId !== lastRoom.sessionId;
+    setPrimarySessionId(lastRoom.sessionId);
+    sessionIdRef.current = lastRoom.sessionId;
+    setSessionId(lastRoom.sessionId);
+    applySocketAuth(lastRoom.displayName);
+    if (reconnect) socket.disconnect();
+    ensureConnected(() => socket.emit('room:join', { roomCode: lastRoom.roomCode }));
+  }, [applySocketAuth, ensureConnected]);
+
+  const kickPlayer = useCallback((playerId: string) => {
+    socket.emit('room:kick', { playerId });
+  }, []);
 
   /** Socket that acts for the given player — the main socket or a hot-seat player's socket. */
   const socketFor = useCallback(
@@ -421,6 +480,7 @@ export function useGame(): GameState {
 
   const leaveRoom = useCallback(() => {
     roomCodeRef.current = null;
+    clearLastRoom();
     socket.emit('room:leave');
     for (const localSocket of localSocketsRef.current.values()) localSocket.emit('room:leave');
     setTimeout(() => window.location.reload(), 200);
@@ -531,6 +591,8 @@ export function useGame(): GameState {
     unlinkSpotify,
     connectAndCreateRoom,
     connectAndJoinRoom,
+    rejoinLastRoom,
+    kickPlayer,
     addLocalPlayer,
     removeLocalPlayer,
     leaveRoom,

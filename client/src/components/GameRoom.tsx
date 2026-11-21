@@ -66,6 +66,25 @@ function activePlayerDisplayName(room: Room, activePlayerId: string | null): str
   return '...';
 }
 
+/** Owner-only remove button; asks first because it also removes players who are still here. */
+function KickButton({ player, onKick }: { player: Player; onKick: (playerId: string) => void }) {
+  return (
+    <button
+      type="button"
+      className="kick-btn"
+      title={`Remove ${player.displayName}`}
+      aria-label={`Remove ${player.displayName} from the room`}
+      data-testid="kick-player-btn"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (window.confirm(`Remove ${player.displayName} from the room?`)) onKick(player.id);
+      }}
+    >
+      ✕
+    </button>
+  );
+}
+
 function HitsterLogo() {
   return (
     <div className="logo">
@@ -85,6 +104,8 @@ interface PlayerListProps {
   sessionId: string;
   /** All players on this device (main + hot-seat) */
   localIds: string[];
+  /** Set for the room owner: remove another player */
+  onKick?: (playerId: string) => void;
 }
 
 function PlayerList({
@@ -94,6 +115,7 @@ function PlayerList({
   isMyTurn,
   sessionId,
   localIds,
+  onKick,
 }: PlayerListProps) {
   const isHotSeat = localIds.length > 1;
   const players = Object.values(room.players).filter((p) => !p.isSpectator);
@@ -136,6 +158,7 @@ function PlayerList({
             ))}
           </div>
         </div>
+        {onKick && p.id !== room.ownerId && <KickButton player={p} onKick={onKick} />}
       </div>
     );
   };
@@ -721,10 +744,11 @@ interface LobbyScreenProps {
   localPlayers: LocalPlayer[];
   onAddLocalPlayer: (name: string) => void;
   onRemoveLocalPlayer: (id: string) => void;
+  onKickPlayer: (playerId: string) => void;
   audioControls: AudioControls;
 }
 
-function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, onLeaveTeam, onLeave, socketError, onPreviewPlaylist, onClearPlaylistPreview, playlistPreviewCards, playlistPreviewLoading, localPlayers, onAddLocalPlayer, onRemoveLocalPlayer, audioControls }: LobbyScreenProps) {
+function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, onLeaveTeam, onLeave, socketError, onPreviewPlaylist, onClearPlaylistPreview, playlistPreviewCards, playlistPreviewLoading, localPlayers, onAddLocalPlayer, onRemoveLocalPlayer, onKickPlayer, audioControls }: LobbyScreenProps) {
   const isOwner = room.ownerId === sessionId;
   const players = Object.values(room.players);
   const [playlistLabel, setPlaylistLabel] = useState('');
@@ -788,6 +812,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
               {!p.isConnected && (
                 <span className="player-disconnected-badge">offline</span>
               )}
+              {isOwner && p.id !== room.ownerId && <KickButton player={p} onKick={onKickPlayer} />}
             </div>
           );
         })}
@@ -1087,6 +1112,8 @@ export interface GameRoomProps {
   onBuyCard: (actorId: string) => void;
   onAddLocalPlayer: (name: string) => void;
   onRemoveLocalPlayer: (id: string) => void;
+  /** Owner removes a player from the room */
+  onKickPlayer: (playerId: string) => void;
   onDismissRoundEnd: () => void;
   onCreateTeam: (name: string) => void;
   onJoinTeam: (teamId: string) => void;
@@ -1121,6 +1148,7 @@ export default function GameRoom({
   onBuyCard,
   onAddLocalPlayer,
   onRemoveLocalPlayer,
+  onKickPlayer,
   onDismissRoundEnd,
   onCreateTeam,
   onJoinTeam,
@@ -1363,6 +1391,7 @@ export default function GameRoom({
           localPlayers={localPlayers}
           onAddLocalPlayer={onAddLocalPlayer}
           onRemoveLocalPlayer={onRemoveLocalPlayer}
+          onKickPlayer={onKickPlayer}
           audioControls={audioControls}
         />
       </div>
@@ -1403,6 +1432,7 @@ export default function GameRoom({
           isMyTurn={isActivePlayer && !isSpectator}
           sessionId={sessionId}
           localIds={localIds}
+          onKick={room.ownerId === primaryId ? onKickPlayer : undefined}
         />
 
         {/* CENTER: Gameplay */}
