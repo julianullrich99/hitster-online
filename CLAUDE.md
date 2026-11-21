@@ -165,11 +165,13 @@ Each client schedules playback `playAt - serverNow` ms after receipt (never comp
 | Quick rejoin | Last room + name + sessionId in `localStorage`; entry page offers a one-click rejoin while the room exists. |
 | Hot-seat | Extra players "on this device" (lobby). One socket per local player; the screen follows whoever is on turn. |
 | Token: skip | Spend 1 to discard current card, draw new one |
-| Token: buy | Spend 3 to place a card directly (before hearing song). Skip next turn. |
+| Token: buy | Spend 3: the current card goes straight into the correct spot (no challenge, counts in Pro/Expert), then the reveal. Skip next turn. |
 | Token: earn | Name song title + artist correctly = +1 token (max 5). Lenient match (`server/src/game/naming.ts`): case/accents/punctuation, bracketed or dashed extras, small typos; one of several artists is enough. |
 | Win | First to 6 correct cards on timeline |
 | Deck empty | Player/team with most cards wins. Tiebreaker: highest avg release year. |
-| Disconnect | Skip turn after 15s timeout. Remove from rotation after 2 missed turns. |
+| Disconnect | Skip turn after 15s timeout. Remove from rotation after 2 turns missed while offline (running out of time doesn't count). |
+| Time up | Turn timer expires → the card is revealed ("Time's up", at the spot it belonged) for the reveal time, then the next turn. |
+| Game log | Coin changes are logged: naming (+1), skip (−1), buy (−3), lost challenge (−1). |
 
 Game modes (Original / Pro / Expert / Cooperative) are defined in `docs/REQUIREMENTS.md` Part 1.
 

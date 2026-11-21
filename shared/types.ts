@@ -227,6 +227,8 @@ export interface ServerToClientEvents {
     timelines: Record<string, Timeline>;
     tokensUpdated: Record<string, number>;
     challengeResults: Array<{ challengerId: string; outcome: 'stole_card' | 'lost_token' }>;
+    /** Time ran out (or the player dropped) — the card is only shown, at the spot it belonged */
+    timedOut?: boolean;
   }) => void;
 
   /** Broadcast when a player correctly names the song (+1 token) */

@@ -294,8 +294,7 @@ function autoSkipActiveTurn(
 ): void {
   clearPlaceTurnTimer(roomCode);
   clearChallengeTimer(roomCode);
-  pendingCards.delete(roomCode);
-  pendingChallenges.delete(roomCode);
+  const card = pendingCards.get(roomCode);
 
   const cur = store.get(roomCode);
   if (!cur?.activeRound) return;
@@ -304,25 +303,60 @@ function autoSkipActiveTurn(
   const waiting = waitingTurns.get(roomCode) === playerId;
   if (!waiting && cur.activeRound.currentTurn?.phase !== 'place') return;
   waitingTurns.delete(roomCode);
+  pendingCards.delete(roomCode);
+  pendingChallenges.delete(roomCode);
 
-  const withMissed = engine.incrementMissedTurns(
-    gameLog.logAutoSkip(cur, playerId, reason),
-    playerId,
-  );
+  // Only turns missed while offline count towards removal — a slow player keeps their seat
+  const logged = gameLog.logAutoSkip(cur, playerId, reason);
+  const withMissed = reason === 'disconnect' ? engine.incrementMissedTurns(logged, playerId) : logged;
   const missed = withMissed.players[playerId]?.missedTurns ?? 0;
 
   io.to(roomCode).emit('turn:auto-skipped', { playerId, reason });
 
-  if (missed >= 2) {
-    const removed = engine.removeFromTurnOrder(withMissed, playerId);
-    store.set(removed);
-    io.to(roomCode).emit('room:updated', removed);
-  } else {
-    const advanced = engine.advanceTurn(withMissed);
-    store.set(advanced);
-    io.to(roomCode).emit('room:updated', advanced);
-  }
-  startTurn(roomCode);
+  const advance = (latest: Room) => {
+    const next = reason === 'disconnect' && missed >= 2
+      ? engine.removeFromTurnOrder(latest, playerId)
+      : engine.advanceTurn(latest);
+    store.set(next);
+    io.to(roomCode).emit('room:updated', next);
+    void startTurn(roomCode);
+  };
+
+  const turn = withMissed.activeRound?.currentTurn;
+  if (!card || !turn || !withMissed.activeRound) { advance(withMissed); return; }
+
+  // A drawn card is shown for the usual reveal time (marked wrong, at the spot it belonged)
+  const ar = withMissed.activeRound;
+  const entityId = engine.activeEntityId(withMissed, turn.activeId);
+  const timeline = ar.timelines[entityId] ?? { ownerId: entityId, cards: [] };
+  const position = timeline.cards.filter(c => c.releaseYear <= card.releaseYear).length;
+  const revealed = gameLog.logFlip(
+    { ...withMissed, activeRound: { ...ar, currentTurn: { ...turn, phase: 'flip' } } },
+    card.title,
+    false,
+  );
+  store.set(revealed);
+  io.to(roomCode).emit('turn:flipped', {
+    card,
+    correct: false,
+    activePlayerId: turn.activeId,
+    placedPosition: position,
+    updatedTimeline: timeline,
+    timelines: ar.timelines,
+    tokensUpdated: ar.tokens,
+    challengeResults: [],
+    timedOut: true,
+  });
+  io.to(roomCode).emit('room:updated', revealed);
+
+  clearFlipAdvanceTimer(roomCode);
+  const timer = setTimeout(() => {
+    flipAdvanceTimers.delete(roomCode);
+    const latest = store.get(roomCode);
+    if (!latest?.activeRound || latest.status !== 'round_active') return;
+    advance(latest);
+  }, FLIP_REVEAL_DISPLAY_MS);
+  flipAdvanceTimers.set(roomCode, timer);
 }
 
 function schedulePlaceTurnTimeout(roomCode: string, playerId: string, timeoutMs: number | null): void {
@@ -966,6 +1000,8 @@ io.on('connection', (socket) => {
 
     const card = pendingCards.get(session.roomCode);
     if (!card) return;
+    if (!engine.isActiveParticipant(room, sessionId)) { socket.emit('error', 'Not your turn'); return; }
+    if (room.activeRound.currentTurn?.named) return; // already named this turn
 
     const titleArtistMatch = naming.titleMatches(data.title, card.title) && naming.artistMatches(data.artist, card.artist);
     const mode = room.activeRound.config.mode;
@@ -975,25 +1011,24 @@ io.on('connection', (socket) => {
     const correct = titleArtistMatch && yearMatch;
 
     if (correct) {
-      if (mode === 'pro' || mode === 'expert') {
-        // Mark current turn as named (no token bonus in these modes)
-        if (room.activeRound.currentTurn) {
-          const updatedRoom = {
-            ...room,
-            activeRound: {
-              ...room.activeRound,
-              currentTurn: { ...room.activeRound.currentTurn, named: true },
-            },
-          };
-          store.set(updatedRoom);
-          io.to(session.roomCode).emit('room:updated', updatedRoom);
-        }
-      } else {
-        // Original/Cooperative: naming bonus (+1 token)
-        const updatedRoom = engine.applyNamingBonus(room, sessionId);
+      const turn = room.activeRound.currentTurn;
+      if (!turn) return;
+      // Mark the turn as named: Pro/Expert need it to keep the card, and one bonus per turn
+      const named: Room = { ...room, activeRound: { ...room.activeRound, currentTurn: { ...turn, named: true } } };
+      const bonusAvailable = mode !== 'pro' && mode !== 'expert' && room.activeRound.config.tokensEnabled;
+      if (!bonusAvailable) {
+        const updatedRoom = gameLog.logNamed(named, sessionId, false, false);
         store.set(updatedRoom);
-        const tokensUpdated = updatedRoom.activeRound?.tokens ?? {};
-        io.to(session.roomCode).emit('turn:named', { playerId: sessionId, tokensUpdated });
+        io.to(session.roomCode).emit('room:updated', updatedRoom);
+      } else {
+        // Original/Cooperative: naming bonus (+1 token, max 5)
+        const withBonus = engine.applyNamingBonus(named, sessionId);
+        const before = room.activeRound.tokens;
+        const after = withBonus.activeRound?.tokens ?? {};
+        const gained = Object.keys(after).some(k => (after[k] ?? 0) > (before[k] ?? 0));
+        const updatedRoom = gameLog.logNamed(withBonus, sessionId, gained, true);
+        store.set(updatedRoom);
+        io.to(session.roomCode).emit('turn:named', { playerId: sessionId, tokensUpdated: after });
         io.to(session.roomCode).emit('room:updated', updatedRoom);
       }
     }
@@ -1011,12 +1046,19 @@ io.on('connection', (socket) => {
 
     if (!engine.isActiveParticipant(room, sessionId)) { socket.emit('error', 'Not your turn'); return; }
 
+    const card = pendingCards.get(session.roomCode);
+    if (!card) { socket.emit('error', 'No card to buy'); return; }
+
     try {
-      const updatedRoom = engine.applyBuy(room, sessionId);
+      const bought = engine.applyBuy(room, sessionId, card);
+      const updatedRoom = gameLog.logBuy(bought, room.activeRound.currentTurn?.activeId ?? sessionId);
       store.set(updatedRoom);
+      pendingChallenges.set(session.roomCode, []);
       const tokensUpdated = updatedRoom.activeRound?.tokens ?? {};
       io.to(session.roomCode).emit('turn:bought', { playerId: sessionId, tokensUpdated });
       io.to(session.roomCode).emit('room:updated', updatedRoom);
+      // The bought card is revealed in its spot right away — no challenge window
+      resolveAndAdvance(session.roomCode);
     } catch (err) {
       socket.emit('error', err instanceof Error ? err.message : 'Buy failed');
     }

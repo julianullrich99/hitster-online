@@ -89,9 +89,36 @@ export function logFlipResolution(
   return logFlip(updated, card.title, correct);
 }
 
+/** Coins of the participant's pool after a change ("3 coins"). */
+function coinBalance(room: Room, participantId: string): string {
+  const ar = room.activeRound;
+  if (!ar) return '';
+  const pool = ar.config.mode === 'cooperative'
+    ? 'cooperative'
+    : room.useTeams
+      ? (Object.entries(room.teams).find(([, t]) => t.playerIds.includes(participantId))?.[0] ?? participantId)
+      : participantId;
+  const n = ar.tokens[pool] ?? 0;
+  return `${n} coin${n === 1 ? '' : 's'}`;
+}
+
 export function logSkip(room: Room, participantId: string): Room {
   const who = participantDisplayName(room, participantId);
-  return logAction(room, who, 'skipped', 'Drew a new card — turn continues');
+  return logAction(room, who, 'skipped (−1 coin)', `Drew a new card — ${coinBalance(room, participantId)} left`);
+}
+
+export function logBuy(room: Room, participantId: string): Room {
+  const who = participantDisplayName(room, participantId);
+  return logAction(room, who, 'bought the card (−3 coins)', `Goes straight into the timeline — next turn skipped, ${coinBalance(room, participantId)} left`);
+}
+
+/** Correct song name. `gained` is false when the bonus is off (Pro/Expert) or the pool is full. */
+export function logNamed(room: Room, playerId: string, gained: boolean, bonusAvailable: boolean): Room {
+  const who = participantDisplayName(room, playerId);
+  if (!bonusAvailable) return logAction(room, who, 'named the song', 'Card counts if the placement is right');
+  return gained
+    ? logAction(room, who, 'named the song (+1 coin)', `Now ${coinBalance(room, playerId)}`)
+    : logAction(room, who, 'named the song', `Already at the maximum of ${coinBalance(room, playerId)}`);
 }
 
 export function logAutoSkip(

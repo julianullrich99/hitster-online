@@ -19,6 +19,8 @@ export interface FlipRevealState {
   position: number;
   card: Card;
   correct: boolean;
+  /** Turn ran out — shown at the spot it belonged, without a placement */
+  timedOut?: boolean;
 }
 
 export function TimelineCard({ card, className = '' }: { card: Card; className?: string }) {
@@ -36,14 +38,14 @@ export function TimelineCard({ card, className = '' }: { card: Card; className?:
   );
 }
 
-function FlipRevealAtCard({ card, correct }: { card: Card; correct: boolean }) {
+function FlipRevealAtCard({ card, correct, timedOut = false }: { card: Card; correct: boolean; timedOut?: boolean }) {
   return (
     <div
       className={`flip-reveal-slot${correct ? ' flip-reveal-slot--correct' : ' flip-reveal-slot--wrong'}`}
       data-testid="flip-reveal"
     >
       <div className={`flip-reveal-badge${correct ? ' flip-reveal-badge--correct' : ' flip-reveal-badge--wrong'}`}>
-        {correct ? '✓ Correct!' : '✗ Wrong!'}
+        {correct ? '✓ Correct!' : timedOut ? '⏱ Time\'s up!' : '✗ Wrong!'}
       </div>
       <div className="flip-reveal-ring" aria-hidden />
       <TimelineCard
@@ -309,7 +311,7 @@ export function TimelineView({
               </div>
             )}
             {isFlipHere && flipReveal && (
-              <FlipRevealAtCard card={flipReveal.card} correct={flipReveal.correct} />
+              <FlipRevealAtCard card={flipReveal.card} correct={flipReveal.correct} timedOut={flipReveal.timedOut} />
             )}
             {cards[i] && !flipCorrect && <TimelineCard card={cards[i]} />}
           </div>
@@ -317,7 +319,7 @@ export function TimelineView({
       })}
       {flipReveal?.position === cards.length && (
         <div key="watch-flip-end" className="timeline-watch-slot">
-          <FlipRevealAtCard card={flipReveal.card} correct={flipReveal.correct} />
+          <FlipRevealAtCard card={flipReveal.card} correct={flipReveal.correct} timedOut={flipReveal.timedOut} />
         </div>
       )}
     </div>
@@ -336,7 +338,7 @@ export function TimelineView({
         return (
           <div key={`slot-${i}`} className="timeline-slot">
             {isFlipHere && flipReveal ? (
-              <FlipRevealAtCard card={flipReveal.card} correct={flipReveal.correct} />
+              <FlipRevealAtCard card={flipReveal.card} correct={flipReveal.correct} timedOut={flipReveal.timedOut} />
             ) : (
               <GapDropZone
                 index={i}

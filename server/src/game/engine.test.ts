@@ -351,6 +351,7 @@ describe('applyNamingBonus', () => {
 // ---------------------------------------------------------------------------
 
 describe('applyBuy', () => {
+  const boughtCard = makeCard('bought', 2005);
   function roomWithTokens(tokens: number): Room {
     const room = createRoom('player1', 'Alice', 'Test Room');
     const roomWith2 = addPlayer(room, 'player2', 'Bob');
@@ -374,24 +375,24 @@ describe('applyBuy', () => {
 
   it('deducts 3 tokens', () => {
     const room = roomWithTokens(3);
-    const result = applyBuy(room, 'player1');
+    const result = applyBuy(room, 'player1', boughtCard);
     expect(result.activeRound!.tokens['player1']).toBe(0);
   });
 
   it('deducts 3 from a higher balance', () => {
     const room = roomWithTokens(5);
-    const result = applyBuy(room, 'player1');
+    const result = applyBuy(room, 'player1', boughtCard);
     expect(result.activeRound!.tokens['player1']).toBe(2);
   });
 
   it('throws when player has fewer than 3 tokens', () => {
     const room = roomWithTokens(2);
-    expect(() => applyBuy(room, 'player1')).toThrow('Not enough tokens');
+    expect(() => applyBuy(room, 'player1', boughtCard)).toThrow('Not enough tokens');
   });
 
   it('throws when it is not the player\'s turn', () => {
     const room = roomWithTokens(3);
-    expect(() => applyBuy(room, 'player2')).toThrow('Not your turn');
+    expect(() => applyBuy(room, 'player2', boughtCard)).toThrow('Not your turn');
   });
 
   it('throws when not in place phase', () => {
@@ -403,18 +404,18 @@ describe('applyBuy', () => {
         currentTurn: { ...room.activeRound!.currentTurn!, phase: 'challenge' },
       },
     };
-    expect(() => applyBuy(challenged, 'player1')).toThrow('place phase');
+    expect(() => applyBuy(challenged, 'player1', boughtCard)).toThrow('place phase');
   });
 
   it('adds player to pendingSkips', () => {
     const room = roomWithTokens(3);
-    const result = applyBuy(room, 'player1');
+    const result = applyBuy(room, 'player1', boughtCard);
     expect(result.activeRound!.pendingSkips).toContain('player1');
   });
 
   it('does not add player to pendingSkips twice', () => {
     const room = roomWithTokens(5);
-    const once = applyBuy(room, 'player1');
+    const once = applyBuy(room, 'player1', boughtCard);
     // Simulate calling again (shouldn't happen in practice but guard it)
     const alreadyIn: Room = {
       ...once,
@@ -423,9 +424,35 @@ describe('applyBuy', () => {
         tokens: { ...once.activeRound!.tokens, player1: 3 },
       },
     };
-    const twice = applyBuy(alreadyIn, 'player1');
+    const twice = applyBuy(alreadyIn, 'player1', boughtCard);
     const skips = twice.activeRound!.pendingSkips ?? [];
     expect(skips.filter(id => id === 'player1')).toHaveLength(1);
+  });
+
+  it('puts the bought card into the correct spot of the timeline', () => {
+    const base = roomWithTokens(3);
+    const room: Room = {
+      ...base,
+      activeRound: {
+        ...base.activeRound!,
+        timelines: {
+          ...base.activeRound!.timelines,
+          player1: { ownerId: 'player1', cards: [makeCard('a', 1990), makeCard('b', 2005), makeCard('c', 2010)] },
+        },
+      },
+    };
+    const bought = applyBuy(room, 'player1', boughtCard);
+    const { room: flipped, correct } = resolveFlip(bought, boughtCard);
+    expect(correct).toBe(true);
+    expect(flipped.activeRound!.timelines.player1.cards.map(c => c.trackId)).toEqual(['a', 'b', 'bought', 'c']);
+  });
+
+  it('counts in Pro mode without naming the song', () => {
+    const base = roomWithTokens(5);
+    const room: Room = { ...base, activeRound: { ...base.activeRound!, config: { ...base.activeRound!.config, mode: 'pro' } } };
+    const before = room.activeRound!.timelines.player1.cards.length;
+    const { room: flipped } = resolveFlip(applyBuy(room, 'player1', boughtCard), boughtCard);
+    expect(flipped.activeRound!.timelines.player1.cards).toHaveLength(before + 1);
   });
 });
 
@@ -949,7 +976,7 @@ describe('applyBuy — tokensEnabled guard', () => {
         currentTurn: { activeId: 'p1', phase: 'place', challenges: [] },
       },
     };
-    expect(() => applyBuy(withTurn, 'p1')).toThrow('Tokens are disabled');
+    expect(() => applyBuy(withTurn, 'p1', makeCard('x', 1990))).toThrow('Tokens are disabled');
   });
 });
 

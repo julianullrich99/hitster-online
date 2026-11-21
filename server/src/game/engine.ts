@@ -654,28 +654,36 @@ export function applySkip(room: Room, playerId: string): Room {
 }
 
 /**
- * Spend 3 tokens to "buy" the current card placement.
- * The player still places the card themselves; their NEXT turn is auto-skipped.
+ * Spend 3 tokens to buy the current card: it goes straight into the correct spot of the
+ * buyer's timeline (no challenge window, counts in Pro/Expert without naming). Their NEXT
+ * turn is auto-skipped. Returns the room ready for resolveFlip.
  */
-export function applyBuy(room: Room, playerId: string): Room {
+export function applyBuy(room: Room, playerId: string, card: Card): Room {
   if (!room.activeRound) throw new Error('No active round');
-  const { tokens, currentTurn, config } = room.activeRound;
+  const { tokens, currentTurn, config, timelines } = room.activeRound;
   if (!config.tokensEnabled) throw new Error('Tokens are disabled in this game');
   if (!currentTurn) throw new Error('No current turn');
   if (!isActiveParticipant(room, playerId)) throw new Error('Not your turn');
   if (currentTurn.phase !== 'place') throw new Error('Can only buy during place phase');
 
-  const entityId = config.mode === 'cooperative' ? 'cooperative' : playerId;
-  const current = tokens[entityId] ?? 0;
+  const tokenEntity = activeEntityId(room, playerId);
+  const current = tokens[tokenEntity] ?? 0;
   if (current < 3) throw new Error('Not enough tokens to buy (need 3)');
 
+  const timelineEntity = config.mode === 'cooperative' ? 'cooperative' : currentTurn.activeId;
+  const cards = timelines[timelineEntity]?.cards ?? [];
+  const position = cards.filter(c => c.releaseYear <= card.releaseYear).length;
+
+  // The turn-order entry (player, or team in team mode) sits out its next turn
+  const skipId = currentTurn.activeId;
   const pendingSkips = room.activeRound.pendingSkips ?? [];
   return {
     ...room,
     activeRound: {
       ...room.activeRound,
-      tokens: { ...tokens, [entityId]: current - 3 },
-      pendingSkips: pendingSkips.includes(playerId) ? pendingSkips : [...pendingSkips, playerId],
+      tokens: { ...tokens, [tokenEntity]: current - 3 },
+      pendingSkips: pendingSkips.includes(skipId) ? pendingSkips : [...pendingSkips, skipId],
+      currentTurn: { ...currentTurn, placedPosition: position, named: true, challenges: [] },
     },
   };
 }

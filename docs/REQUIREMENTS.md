@@ -102,7 +102,7 @@ Each turn has three phases:
 |---|---|
 | **Skip card** (your turn) | Spend 1 token to discard the current card and draw a new one. |
 | **Challenge** | During the challenge window, any non-placing **participant** (not a spectator) can challenge via the **Challenge** button under the placed card. If the opponent placed incorrectly, challenger steals the card. If the opponent was correct, the challenger loses a token. |
-| **Buy a card** | Spend 3 tokens to place a card on your timeline without hearing the song. Your next turn is auto-skipped. |
+| **Buy a card** | Spend 3 tokens during your turn: the current card goes straight into the correct spot of your timeline (no challenge window; counts in Pro/Expert without naming) and is revealed. Your next turn is auto-skipped. |
 | **Earn a token** | Name the song title AND artist correctly during your turn = +1 token (max 5). Original/Cooperative only. |
 
 #### Game Modes

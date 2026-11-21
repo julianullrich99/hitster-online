@@ -36,6 +36,7 @@ export interface GameState {
     activePlayerId: string;
     placedPosition: number;
     challengeResults: Array<{ challengerId: string; outcome: 'stole_card' | 'lost_token' }>;
+    timedOut: boolean;
   } | null;
   roundEnded: { winnerId: string | null } | null;
   /** Server identity of this device's main player */
@@ -295,8 +296,10 @@ export function useGame(): GameState {
       timelines,
       tokensUpdated,
       challengeResults,
+      timedOut,
     }) => {
       setLastFlip({
+        timedOut: timedOut === true,
         card,
         correct,
         activePlayerId: flipActiveId,

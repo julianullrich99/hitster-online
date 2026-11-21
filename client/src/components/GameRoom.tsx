@@ -1133,6 +1133,7 @@ export interface GameRoomProps {
     activePlayerId: string;
     placedPosition: number;
     challengeResults: Array<{ challengerId: string; outcome: 'stole_card' | 'lost_token' }>;
+    timedOut: boolean;
   } | null;
   roundEnded: { winnerId: string | null } | null;
   /** This device's main player */
@@ -1204,6 +1205,7 @@ export default function GameRoom({
     position: number;
     card: Card;
     correct: boolean;
+    timedOut: boolean;
     timelineEntityId: string;
   } | null>(null);
   const [nameSongTitle, setNameSongTitle] = useState('');
@@ -1281,6 +1283,7 @@ export default function GameRoom({
           position: flipRevealSnapshot.position,
           card: flipRevealSnapshot.card,
           correct: flipRevealSnapshot.correct,
+          timedOut: flipRevealSnapshot.timedOut,
         }
       : null;
 
@@ -1311,6 +1314,7 @@ export default function GameRoom({
       position: lastFlip.placedPosition,
       card: lastFlip.card,
       correct: lastFlip.correct,
+      timedOut: lastFlip.timedOut,
       timelineEntityId,
     });
     setShowFlipResult(true);
