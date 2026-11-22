@@ -157,6 +157,9 @@ export const en: Messages = {
   'audioSettings.refresh': '↻ Refresh devices',
   'audioSettings.disconnect': 'Disconnect Spotify',
   'audioSettings.pickDevice': 'Pick a device — until then turns use previews.',
+  'audioSettings.connectSaved': 'Connect Spotify ({name})',
+  'audioSettings.otherAccount': 'Other account',
+  'audioSettings.guestHint': 'Got Spotify Premium? Full songs can play through your account.',
   'audioSettings.tip': 'Tip: the Spotify app shows the song title — put the phone face down or out of sight.',
 
   // ── Game modes ──
@@ -307,6 +310,9 @@ export const en: Messages = {
   'error.notEnoughTokensBuy': 'Not enough tokens to buy (need 3)',
   'error.connectSpotifyFirst': 'Connect a Spotify account first',
   'error.noSpotifyLinked': 'No Spotify account linked',
+  'error.spotifyLoginExpired': 'Your saved Spotify login expired — connect Spotify again.',
+  'error.spotifyTaken': 'Spotify is already connected by another player.',
+  'error.spotifyNotConfigured': 'Spotify is not configured on this server.',
   'error.createRoomFailed': 'Failed to create room',
   'error.roomNotFound': 'Room not found',
   'error.joinFailed': 'Failed to join room',

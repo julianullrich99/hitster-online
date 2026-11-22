@@ -45,7 +45,7 @@ import {
   isSpotifyTrackPageUrl,
   isValidSpotifyTrackId,
 } from './spotify/embedPreview';
-import { SpotifyConnect, SpotifyConnectError } from './spotify/connect';
+import { SpotifyConnect, SpotifyConnectError, type SavedLogin } from './spotify/connect';
 import { connectResultHtml, parseLang, type ConnectPageMessage } from './spotify/connectPage';
 import { RoomStore } from './rooms/store';
 import * as engine from './game/engine';
@@ -166,7 +166,8 @@ app.get('/api/spotify/tracks/:trackId/embed-preview', async (req, res) => {
 });
 
 // ── Spotify Connect (full songs on one device) ────────────────────────────────
-// The room owner links a Premium account; tokens stay on the server (spotify/connect.ts).
+// Any player can link a Premium account; tokens stay on the server (spotify/connect.ts).
+// The browser keeps a sealed copy of the login so the next room needs no Spotify login.
 
 function spotifyRedirectUri(req: express.Request): string {
   if (process.env.SPOTIFY_REDIRECT_URI) return process.env.SPOTIFY_REDIRECT_URI;
@@ -179,7 +180,7 @@ function connectResultPage(
   status: number,
   lang: Lang,
   message: ConnectPageMessage,
-  params?: { name?: string },
+  params?: { name?: string; saved?: SavedLogin },
 ): void {
   res.status(status).type('html').send(connectResultHtml(lang, message, params));
 }
@@ -193,7 +194,7 @@ app.get('/api/spotify/connect/login', (req, res) => {
     connectResultPage(res, 503, lang, 'not_configured');
     return;
   }
-  if (!room || room.ownerId !== sessionId) {
+  if (!room || !engine.canLinkSpotify(room, sessionId)) {
     connectResultPage(res, 403, lang, 'owner_only');
     return;
   }
@@ -213,17 +214,17 @@ app.get('/api/spotify/connect/callback', async (req, res) => {
     return;
   }
   try {
-    const accountName = await spotifyConnect.completeLogin(login, String(req.query.code));
+    const saved = await spotifyConnect.completeLogin(login, String(req.query.code));
     const room = store.get(login.roomCode);
     if (!room) {
       spotifyConnect.unlink(login.roomCode);
-      connectResultPage(res, 404, lang, 'room_gone');
+      connectResultPage(res, 404, lang, 'room_gone', { saved });
       return;
     }
-    const updated = engine.setSpotifyAccount(room, accountName);
+    const updated = engine.setSpotifyAccount(room, saved.accountName, login.sessionId);
     store.set(updated);
     io.to(room.code).emit('room:updated', updated);
-    connectResultPage(res, 200, lang, 'connected', { name: accountName });
+    connectResultPage(res, 200, lang, 'connected', { name: saved.accountName, saved });
   } catch (err) {
     console.warn('[Spotify Connect] login failed:', err instanceof Error ? err.message : err);
     const code = err instanceof SpotifyConnectError ? err.code : 'other';
@@ -1165,13 +1166,13 @@ io.on('connection', (socket) => {
   });
 
   // ------------------------------------------------------------------
-  // audio:* — owner picks previews on every device vs. full songs via Spotify
+  // audio:* — owner (or whoever linked Spotify) picks previews on every device vs. full songs
   // ------------------------------------------------------------------
   const ownedRoom = (): Room | null => {
     const session = socketSession.get(socket.id);
     const room = session ? store.get(session.roomCode) : undefined;
     if (!room) return null;
-    if (room.ownerId !== sessionId) {
+    if (!engine.canManageAudio(room, sessionId)) {
       socket.emit('error', 'Only the room owner can change the audio');
       return null;
     }
@@ -1214,6 +1215,33 @@ io.on('connection', (socket) => {
       io.to(room.code).emit('room:updated', updated);
     } catch (err) {
       socket.emit('error', err instanceof Error ? err.message : 'Could not select the Spotify device');
+    }
+  });
+
+  socket.on('audio:restore-login', async (data) => {
+    const session = socketSession.get(socket.id);
+    const room = session ? store.get(session.roomCode) : undefined;
+    if (!room || typeof data?.link !== 'string') return;
+    if (!spotifyConnect.configured || process.env.TEST_MODE === 'true') {
+      socket.emit('error', 'Spotify is not configured on this server');
+      return;
+    }
+    if (!engine.canLinkSpotify(room, sessionId)) {
+      socket.emit('error', 'Spotify is already connected by another player');
+      return;
+    }
+    try {
+      const saved = await spotifyConnect.restoreLogin(room.code, data.link);
+      const latest = store.get(room.code);
+      if (!latest) { spotifyConnect.unlink(room.code); return; }
+      const updated = engine.setSpotifyAccount(latest, saved.accountName, sessionId);
+      store.set(updated);
+      io.to(room.code).emit('room:updated', updated);
+      socket.emit('audio:login-saved', saved);
+    } catch (err) {
+      console.warn('[Spotify Connect] restore failed:', err instanceof Error ? err.message : err);
+      socket.emit('audio:login-expired');
+      socket.emit('error', 'Your saved Spotify login expired — connect Spotify again');
     }
   });
 

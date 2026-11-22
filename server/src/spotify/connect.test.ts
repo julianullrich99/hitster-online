@@ -129,4 +129,43 @@ describe('SpotifyConnect', () => {
     const tokenCalls = f.calls.filter(c => c.url.includes('/api/token'));
     expect(tokenCalls[1].body).toContain('grant_type=refresh_token');
   });
+
+  it('remembers a login: the sealed blob links a new room without a Spotify login', async () => {
+    const f = fakeFetch({
+      'POST accounts.spotify.com/api/token': [
+        { status: 200, body: TOKEN },
+        { status: 200, body: { access_token: 'at2', expires_in: 3600 } },
+      ],
+      'GET /v1/me': [{ status: 200, body: { id: 'alice', display_name: 'Alice', product: 'premium' } }],
+    });
+    const connect = new SpotifyConnect('id', 'secret', f.fn);
+    const state = new URL(connect.beginLogin('ROOM', 'p2', 'https://x/cb')).searchParams.get('state')!;
+    const saved = await connect.completeLogin(connect.takeLogin(state)!, 'code');
+    expect(saved.accountName).toBe('Alice');
+    // Opaque to the browser: the refresh token is not readable
+    expect(Buffer.from(saved.link, 'base64url').toString('latin1')).not.toContain('refreshToken');
+
+    const restored = await connect.restoreLogin('NEXT', saved.link);
+    expect(restored.accountName).toBe('Alice');
+    expect(connect.isLinked('NEXT')).toBe(true);
+    const refresh = f.calls.filter(c => c.url.includes('/api/token'))[1];
+    expect(refresh.body).toContain('refresh_token=rt');
+  });
+
+  it('rejects a tampered, foreign or revoked saved login', async () => {
+    const { connect } = await linked({});
+    const other = new SpotifyConnect('id', 'other-secret', fakeFetch({}).fn);
+    await expect(connect.restoreLogin('X', 'garbage')).rejects.toMatchObject({ code: 'expired' });
+
+    const f = fakeFetch({
+      'POST accounts.spotify.com/api/token': [{ status: 200, body: TOKEN }, { status: 400, body: { error: 'invalid_grant' } }],
+      'GET /v1/me': [{ status: 200, body: { id: 'alice', display_name: 'Alice', product: 'premium' } }],
+    });
+    const c2 = new SpotifyConnect('id', 'secret', f.fn);
+    const state = new URL(c2.beginLogin('ROOM', 'p1', 'https://x/cb')).searchParams.get('state')!;
+    const saved = await c2.completeLogin(c2.takeLogin(state)!, 'code');
+    await expect(other.restoreLogin('X', saved.link)).rejects.toMatchObject({ code: 'expired' });
+    await expect(c2.restoreLogin('X', saved.link)).rejects.toMatchObject({ code: 'expired' });
+    expect(c2.isLinked('X')).toBe(false);
+  });
 });

@@ -169,6 +169,9 @@ export const de = {
   'audioSettings.refresh': '↻ Geräte aktualisieren',
   'audioSettings.disconnect': 'Spotify trennen',
   'audioSettings.pickDevice': 'Wähl ein Gerät – bis dahin laufen Vorschauen.',
+  'audioSettings.connectSaved': 'Spotify verbinden ({name})',
+  'audioSettings.otherAccount': 'Anderes Konto',
+  'audioSettings.guestHint': 'Du hast Spotify Premium? Dann können ganze Songs über dein Konto laufen.',
   'audioSettings.tip': 'Tipp: Die Spotify-App zeigt den Songtitel – leg das Handy umgedreht oder außer Sicht.',
 
   // ── Game modes ──
@@ -319,6 +322,9 @@ export const de = {
   'error.notEnoughTokensBuy': 'Nicht genug Coins zum Kaufen (du brauchst 3).',
   'error.connectSpotifyFirst': 'Verbinde zuerst ein Spotify-Konto.',
   'error.noSpotifyLinked': 'Kein Spotify-Konto verbunden.',
+  'error.spotifyLoginExpired': 'Die gespeicherte Spotify-Anmeldung ist abgelaufen – verbinde Spotify bitte neu.',
+  'error.spotifyTaken': 'Spotify ist schon von jemand anderem verbunden.',
+  'error.spotifyNotConfigured': 'Spotify ist auf diesem Server nicht eingerichtet.',
   'error.createRoomFailed': 'Der Raum konnte nicht erstellt werden.',
   'error.roomNotFound': 'Raum nicht gefunden.',
   'error.joinFailed': 'Beitreten hat nicht geklappt.',

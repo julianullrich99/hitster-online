@@ -749,11 +749,13 @@ export function WinScreen({ winnerId, room, sessionId, onBackToLobby, onLeave, o
 
 // ── Audio settings (lobby) ────────────────────────────────────────────────────
 
-/** Owner-side Spotify controls, passed down from useGame */
+/** Spotify controls, passed down from useGame */
 export interface AudioControls {
   spotifyDevices: SpotifyDevice[] | null;
   onSetAudioMode: (mode: AudioMode) => void;
-  onConnectSpotify: () => void;
+  onConnectSpotify: (freshLogin?: boolean) => void;
+  /** Account of the Spotify login this browser remembers (one tap to link it) */
+  savedSpotifyAccount: string | null;
   onListSpotifyDevices: () => void;
   onSelectSpotifyDevice: (deviceId: string) => void;
   onUnlinkSpotify: () => void;
@@ -763,18 +765,53 @@ const DEVICE_ICONS: Record<string, string> = {
   Smartphone: '📱', Computer: '💻', Speaker: '🔈', TV: '📺', Tablet: '📱', CastAudio: '🔈', CastVideo: '📺',
 };
 
-function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boolean; controls: AudioControls }) {
+function ConnectSpotifyButtons({ controls }: { controls: AudioControls }) {
+  const t = useT();
+  const saved = controls.savedSpotifyAccount;
+  return (
+    <>
+      <button
+        type="button"
+        className="lobby-team-btn"
+        onClick={() => controls.onConnectSpotify()}
+        data-testid="connect-spotify-btn"
+      >
+        {saved ? t('audioSettings.connectSaved', { name: saved }) : t('audioSettings.connect')}
+      </button>
+      {saved && (
+        <button type="button" className="lobby-team-btn" onClick={() => controls.onConnectSpotify(true)}>
+          {t('audioSettings.otherAccount')}
+        </button>
+      )}
+    </>
+  );
+}
+
+function AudioSettings({ room, sessionId, controls }: { room: Room; sessionId: string; controls: AudioControls }) {
   const { mode, spotify } = room.audio;
   const { spotifyDevices, onListSpotifyDevices } = controls;
   const linked = Boolean(spotify);
   const t = useT();
+  // Owner and whoever linked Spotify manage the audio (mirrors engine.canManageAudio)
+  const canManage = room.ownerId === sessionId || spotify?.linkedBy === sessionId;
 
   // Load the device list once the account is linked
   useEffect(() => {
-    if (isOwner && linked && spotifyDevices === null) onListSpotifyDevices();
-  }, [isOwner, linked, spotifyDevices, onListSpotifyDevices]);
+    if (canManage && linked && spotifyDevices === null) onListSpotifyDevices();
+  }, [canManage, linked, spotifyDevices, onListSpotifyDevices]);
 
-  if (!isOwner) {
+  if (!canManage) {
+    if (!linked) {
+      // Anyone with Premium can bring the full songs
+      return (
+        <div className="lobby-config-section" data-testid="audio-settings-guest">
+          <div className="lobby-local-hint">
+            {t('audioSettings.guestHint')}{' '}
+            <ConnectSpotifyButtons controls={controls} />
+          </div>
+        </div>
+      );
+    }
     return mode === 'spotify' && spotify?.deviceName ? (
       <div className="lobby-audio-note" data-testid="audio-note">
         {withNodes(t('audioSettings.note'), { device: <strong>{spotify.deviceName}</strong> })}
@@ -812,9 +849,7 @@ function AudioSettings({ room, isOwner, controls }: { room: Room; isOwner: boole
       {!linked && (
         <div className="lobby-local-hint">
           {t('audioSettings.connectHint')}{' '}
-          <button type="button" className="lobby-team-btn" onClick={controls.onConnectSpotify} data-testid="connect-spotify-btn">
-            {t('audioSettings.connect')}
-          </button>
+          <ConnectSpotifyButtons controls={controls} />
         </div>
       )}
 
@@ -1070,7 +1105,7 @@ function LobbyScreen({ room, sessionId, onStartRound, onCreateTeam, onJoinTeam, 
         </>
       )}
 
-      <AudioSettings room={room} isOwner={isOwner} controls={audioControls} />
+      <AudioSettings room={room} sessionId={sessionId} controls={audioControls} />
 
       {/* ── Hot-seat: more players on this device ── */}
       <div className="lobby-teams-section" data-testid="local-players-section">

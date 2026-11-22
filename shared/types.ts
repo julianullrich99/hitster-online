@@ -83,6 +83,8 @@ export interface RoomAudio {
   /** Set while a Spotify (Premium) account is linked to the room */
   spotify?: {
     accountName: string;
+    /** Player (sessionId) who linked the account — may manage it like the owner */
+    linkedBy: string;
     deviceId: string | null;
     deviceName: string | null;
   };
@@ -274,6 +276,10 @@ export interface ServerToClientEvents {
 
   /** Spotify Connect devices of the linked account — emitted only to the owner who asked */
   'audio:devices': (data: { devices: SpotifyDevice[] }) => void;
+  /** A remembered Spotify login, sealed by the server — the browser stores it to skip the next login */
+  'audio:login-saved': (data: { accountName: string; link: string }) => void;
+  /** The remembered Spotify login no longer works — the browser forgets it */
+  'audio:login-expired': () => void;
 
   /** Broadcast when the owner removes a player — that player's device returns to the entry page */
   'player:kicked': (data: { playerId: string }) => void;
@@ -331,17 +337,20 @@ export interface ClientToServerEvents {
   /** Owner ends the game session, transitioning room to game_over */
   'room:end': () => void;
 
-  /** Owner switches between previews on every device and full songs via Spotify */
+  /** Owner (or whoever linked Spotify) switches between previews on every device and full songs via Spotify */
   'audio:set-mode': (data: { mode: AudioMode }) => void;
 
-  /** Owner asks for the linked account's Spotify Connect devices (answered with audio:devices) */
+  /** Owner or Spotify linker asks for the linked account's Spotify Connect devices (answered with audio:devices) */
   'audio:list-devices': () => void;
 
-  /** Owner picks the Spotify Connect device that plays the songs */
+  /** Owner or Spotify linker picks the Spotify Connect device that plays the songs */
   'audio:select-device': (data: { deviceId: string }) => void;
 
-  /** Owner unlinks the Spotify account; audio falls back to previews */
+  /** Owner or Spotify linker unlinks the Spotify account; audio falls back to previews */
   'audio:unlink': () => void;
+
+  /** A player links their remembered Spotify login (from audio:login-saved) to the room */
+  'audio:restore-login': (data: { link: string }) => void;
 }
 
 // ----------------------------

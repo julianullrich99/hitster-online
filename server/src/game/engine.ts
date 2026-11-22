@@ -789,15 +789,29 @@ export function setAudioMode(room: Room, mode: AudioMode): Room {
 }
 
 /** Link a Spotify account (or drop it with null). Unlinking falls back to previews. */
-export function setSpotifyAccount(room: Room, accountName: string | null): Room {
+export function setSpotifyAccount(room: Room, accountName: string | null, linkedBy: string = room.ownerId): Room {
   if (accountName === null) {
     return { ...room, audio: { mode: 'previews' } };
   }
   const audio: RoomAudio = {
     mode: 'spotify',
-    spotify: { accountName, deviceId: null, deviceName: null },
+    spotify: { accountName, linkedBy, deviceId: null, deviceName: null },
   };
   return { ...room, audio };
+}
+
+/** Owner and whoever linked the Spotify account manage audio (mode, device, unlink). */
+export function canManageAudio(room: Room, playerId: string): boolean {
+  return room.ownerId === playerId || room.audio.spotify?.linkedBy === playerId;
+}
+
+/**
+ * Any player may link their Spotify account while none is linked; replacing a linked
+ * account is up to the owner or the player who linked it.
+ */
+export function canLinkSpotify(room: Room, playerId: string): boolean {
+  if (!room.players[playerId]) return false;
+  return !room.audio.spotify || canManageAudio(room, playerId);
 }
 
 /** Pick the Spotify Connect device that plays the songs. */

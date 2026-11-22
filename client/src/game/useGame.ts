@@ -12,6 +12,7 @@ import {
   type LastRoom,
 } from '../socket/client';
 import type { SocketAuth, Room, Card, CardHidden, GameMode, AudioMode, SpotifyDevice } from '../../../shared/types';
+import { forgetSpotifyLogin, getSavedSpotifyLogin, saveSpotifyLogin } from '../spotify';
 import { getServerUrl } from '../config';
 import { getLang } from '../i18n';
 
@@ -50,7 +51,10 @@ export interface GameState {
   /** Spotify Connect devices of the linked account (owner only, after listSpotifyDevices) */
   spotifyDevices: SpotifyDevice[] | null;
   setAudioMode: (mode: AudioMode) => void;
-  connectSpotify: () => void;
+  /** Links the remembered Spotify login if there is one; `freshLogin` opens Spotify's login instead */
+  connectSpotify: (freshLogin?: boolean) => void;
+  /** Account of the Spotify login this browser remembers */
+  savedSpotifyAccount: string | null;
   listSpotifyDevices: () => void;
   selectSpotifyDevice: (deviceId: string) => void;
   unlinkSpotify: () => void;
@@ -112,6 +116,15 @@ export function useGame(): GameState {
   const [playAt, setPlayAt] = useState<number | null>(null);
   const [speaker, setSpeaker] = useState<{ deviceName: string } | null>(null);
   const [spotifyDevices, setSpotifyDevices] = useState<SpotifyDevice[] | null>(null);
+  const [savedSpotifyAccount, setSavedSpotifyAccount] = useState<string | null>(
+    () => getSavedSpotifyLogin()?.accountName ?? null,
+  );
+  // The login tab writes the remembered login into localStorage — pick it up here
+  useEffect(() => {
+    const onStorage = () => setSavedSpotifyAccount(getSavedSpotifyLogin()?.accountName ?? null);
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
   const [turnEndsAt, setTurnEndsAt] = useState<number | null>(null);
   const [timelineLength, setTimelineLength] = useState(0);
   const [lastFlip, setLastFlip] = useState<GameState['lastFlip']>(null);
@@ -395,6 +408,16 @@ export function useGame(): GameState {
       setSpotifyDevices(devices);
     });
 
+    socket.on('audio:login-saved', saved => {
+      saveSpotifyLogin(saved);
+      setSavedSpotifyAccount(saved.accountName);
+    });
+
+    socket.on('audio:login-expired', () => {
+      forgetSpotifyLogin();
+      setSavedSpotifyAccount(null);
+    });
+
     socket.on('playlist:previewed', ({ cards }) => {
       setPlaylistPreviewCards(cards);
       setPlaylistPreviewLoading(false);
@@ -424,6 +447,8 @@ export function useGame(): GameState {
       socket.off('round:ended');
       socket.off('playlist:previewed');
       socket.off('audio:devices');
+      socket.off('audio:login-saved');
+      socket.off('audio:login-expired');
       socket.off('error');
     };
   }, []);
@@ -614,10 +639,19 @@ export function useGame(): GameState {
     socket.emit('audio:set-mode', { mode });
   }, []);
 
-  /** Opens Spotify's login in a new tab — must run inside the click handler (popup blockers). */
-  const connectSpotify = useCallback(() => {
+  /**
+   * Links the login this browser remembers (no Spotify page), or opens Spotify's login in a
+   * new tab — that must run inside the click handler (popup blockers).
+   */
+  const connectSpotify = useCallback((freshLogin = false) => {
     const roomCode = roomCodeRef.current;
     if (!roomCode) return;
+    const saved = freshLogin ? null : getSavedSpotifyLogin();
+    if (saved) {
+      setSpotifyDevices(null);
+      socket.emit('audio:restore-login', { link: saved.link });
+      return;
+    }
     // The login result page is rendered by the server — in this device's language
     const params = new URLSearchParams({ room: roomCode, session: getPrimarySessionId(), lang: getLang() });
     window.open(`${getServerUrl()}/api/spotify/connect/login?${params}`, '_blank');
@@ -656,6 +690,7 @@ export function useGame(): GameState {
     spotifyDevices,
     setAudioMode,
     connectSpotify,
+    savedSpotifyAccount,
     listSpotifyDevices,
     selectSpotifyDevice,
     unlinkSpotify,

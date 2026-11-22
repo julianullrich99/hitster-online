@@ -20,4 +20,11 @@ describe('Spotify Connect result page', () => {
   it('escapes the account name', () => {
     expect(connectResultHtml('en', 'connected', { name: '<b>Al</b>' })).toContain('Spotify connected as &lt;b&gt;Al&lt;/b&gt;.');
   });
+
+  it('stores the sealed login in the browser, safely embedded', () => {
+    const html = connectResultHtml('de', 'connected', { name: 'Al', saved: { accountName: '</script><b>', link: 'abc' } });
+    expect(html).toContain("localStorage.setItem(\"hitster_spotify_login\"");
+    expect(html).not.toContain('</script><b>');
+    expect(connectResultHtml('de', 'cancelled')).not.toContain('localStorage');
+  });
 });

@@ -104,6 +104,7 @@ export default function App() {
         spotifyDevices: game.spotifyDevices,
         onSetAudioMode: game.setAudioMode,
         onConnectSpotify: game.connectSpotify,
+        savedSpotifyAccount: game.savedSpotifyAccount,
         onListSpotifyDevices: game.listSpotifyDevices,
         onSelectSpotifyDevice: game.selectSpotifyDevice,
         onUnlinkSpotify: game.unlinkSpotify,

@@ -125,10 +125,11 @@ State is a `Map<string, Room>` held in memory. Do not introduce a database, Redi
 
 ### 5. No user authentication
 Players are identified by a `sessionId` (UUID generated client-side on first visit, stored in `sessionStorage`) and enter only a name. No email, no login, no JWT, no cookies. The room owner is simply the player whose `sessionId` created the room.
-The single exception is the optional **Connect Spotify** for full-song playback (rule 6) — it links a Spotify account to the *room*, not a player identity.
+The single exception is the optional **Connect Spotify** for full-song playback (rule 6) — any player can link a Spotify account to the *room*, not a player identity.
 
 ### 6. Spotify integration
-- Use **Client Credentials Flow** for everything except full-song playback. The only Authorization Code Flow is the room owner's optional Spotify Connect link in `server/src/spotify/connect.ts` (Premium, playback scopes only); its tokens stay server-side and never enter `Room` state or reach a client.
+- Use **Client Credentials Flow** for everything except full-song playback. The only Authorization Code Flow is the optional Spotify Connect link in `server/src/spotify/connect.ts` (any player, Premium, playback scopes only); its tokens stay server-side and never enter `Room` state. The owner and the player who linked (`audio.spotify.linkedBy`) manage it.
+- Remembered login: the server seals the refresh token (AES-256-GCM, key from `SPOTIFY_LINK_SECRET` or the client secret) and the browser keeps only that opaque blob in localStorage (`hitster_spotify_login`); `audio:restore-login` links it to the next room without a Spotify login.
 - The token is fetched server-side and refreshed automatically before expiry.
 - The app is in Spotify development mode (tiny request quota, many endpoints blocked). Read track data from the public embed pages where possible and keep Web API calls rare and cached — see `docs/REQUIREMENTS.md` §2.3. Test against the live API sparingly: exhausting the quota blocks the app (incl. production) for hours.
 - Preview MP3s come from `track.preview_url` or, when null, the embed page; tracks without any preview resolve per turn and show "Preview unavailable".

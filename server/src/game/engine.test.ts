@@ -28,6 +28,8 @@ import {
   kickPlayer,
   setAudioMode,
   setSpotifyAccount,
+  canLinkSpotify,
+  canManageAudio,
   setSpotifyDevice,
   spotifySpeaker,
 } from './engine';
@@ -1390,6 +1392,23 @@ describe('audio output', () => {
 
   it('picking a device needs a linked account', () => {
     expect(() => setSpotifyDevice(createRoom('p1', 'Alice', 'T'), 'dev1', 'Phone')).toThrow();
+  });
+
+  it('any player may link Spotify; the linker manages it like the owner', () => {
+    const room = addPlayer(addPlayer(createRoom('p1', 'Alice', 'T'), 'p2', 'Bob'), 'p3', 'Cleo');
+    expect(canLinkSpotify(room, 'p2')).toBe(true);
+    expect(canLinkSpotify(room, 'stranger')).toBe(false);
+    expect(canManageAudio(room, 'p2')).toBe(false);
+
+    const linked = setSpotifyAccount(room, 'bob', 'p2');
+    expect(linked.audio.spotify?.linkedBy).toBe('p2');
+    expect(canManageAudio(linked, 'p2')).toBe(true);
+    expect(canManageAudio(linked, 'p1')).toBe(true);
+    expect(canManageAudio(linked, 'p3')).toBe(false);
+    // Someone else can't take over a linked account; owner and linker can replace it
+    expect(canLinkSpotify(linked, 'p3')).toBe(false);
+    expect(canLinkSpotify(linked, 'p1')).toBe(true);
+    expect(canLinkSpotify(linked, 'p2')).toBe(true);
   });
 });
 

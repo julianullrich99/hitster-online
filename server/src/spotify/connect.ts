@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'crypto';
 import type { Lang, SpotifyDevice } from '../../../shared/types';
 
 /*
@@ -7,7 +7,13 @@ import type { Lang, SpotifyDevice } from '../../../shared/types';
  * The only place the app uses a *user* token (Authorization Code Flow): the room owner links
  * a Premium account once, and the server then tells that account to play each turn's song on
  * the Connect device they picked (phone app, TV, speaker). Tokens stay in this module — never
- * in Room state, never sent to a client. Deck building keeps using Client Credentials.
+ * in Room state, never sent to a client in usable form. Deck building keeps using Client Credentials.
+ *
+ * Remembered logins: after a login the server seals the refresh token (AES-256-GCM, key derived
+ * from the client secret) and hands that opaque blob to the browser, which keeps it in
+ * localStorage. Next time the browser sends the blob back and the server links the account to the
+ * new room without another Spotify login. The browser can't read or use the blob; the server
+ * keeps nothing between rooms (no persistence).
  */
 
 const AUTHORIZE_URL = 'https://accounts.spotify.com/authorize';
@@ -28,6 +34,19 @@ export interface PendingLogin {
   /** Language of the page shown after the login */
   lang: Lang;
   createdAt: number;
+}
+
+/** A sealed, browser-stored login: opaque to the client, only this server can open it */
+export interface SavedLogin {
+  accountName: string;
+  /** Sealed refresh token */
+  link: string;
+}
+
+interface SealedPayload {
+  v: 1;
+  refreshToken: string;
+  accountName: string;
 }
 
 interface Link {
@@ -53,7 +72,7 @@ interface DevicesResponse {
 }
 
 /** What went wrong, so the result page can say it in the player's language */
-export type SpotifyConnectErrorCode = 'not_premium' | 'not_allowed' | 'other';
+export type SpotifyConnectErrorCode = 'not_premium' | 'not_allowed' | 'expired' | 'other';
 
 export class SpotifyConnectError extends Error {
   constructor(message: string, readonly code: SpotifyConnectErrorCode = 'other') {
@@ -66,18 +85,22 @@ type FetchFn = typeof fetch;
 export class SpotifyConnect {
   private readonly pendingLogins = new Map<string, PendingLogin>();
   private readonly links = new Map<string, Link>();
+  private readonly sealKey: Buffer;
 
   constructor(
     private readonly clientId: string,
     private readonly clientSecret: string,
     private readonly fetchFn: FetchFn = fetch,
-  ) {}
+    sealSecret: string = process.env.SPOTIFY_LINK_SECRET || clientSecret,
+  ) {
+    this.sealKey = Buffer.from(hkdfSync('sha256', sealSecret || 'unset', 'hitster', 'spotify-link-v1', 32));
+  }
 
   get configured(): boolean {
     return Boolean(this.clientId && this.clientSecret);
   }
 
-  /** Start a login for the room owner; returns the Spotify consent URL. */
+  /** Start a login for a player in the room; returns the Spotify consent URL. */
   beginLogin(roomCode: string, sessionId: string, redirectUri: string, lang: Lang = 'de'): string {
     this.dropExpiredLogins();
     const state = randomBytes(16).toString('hex');
@@ -101,8 +124,8 @@ export class SpotifyConnect {
     return login;
   }
 
-  /** Exchange the callback code, check Premium, and link the account to the room. Returns the account name. */
-  async completeLogin(login: PendingLogin, code: string): Promise<string> {
+  /** Exchange the callback code, check Premium, and link the account to the room. */
+  async completeLogin(login: PendingLogin, code: string): Promise<SavedLogin> {
     const token = await this.requestToken({
       grant_type: 'authorization_code',
       code,
@@ -132,7 +155,56 @@ export class SpotifyConnect {
       refreshToken: token.refresh_token,
       expiresAt: Date.now() + token.expires_in * 1000,
     });
-    return profile.display_name || profile.id;
+    const accountName = profile.display_name || profile.id;
+    return { accountName, link: this.seal({ v: 1, refreshToken: token.refresh_token, accountName }) };
+  }
+
+  /**
+   * Link a remembered login (from the browser) to a room — no Spotify login page.
+   * Returns the login to store again (the refresh token may have been rotated).
+   * Throws SpotifyConnectError('expired') when the blob is invalid or Spotify revoked it.
+   */
+  async restoreLogin(roomCode: string, link: string): Promise<SavedLogin> {
+    const payload = this.unseal(link);
+    if (!payload) throw new SpotifyConnectError('Saved Spotify login is invalid', 'expired');
+    let token: TokenResponse;
+    try {
+      token = await this.requestToken({ grant_type: 'refresh_token', refresh_token: payload.refreshToken });
+    } catch {
+      throw new SpotifyConnectError('Saved Spotify login expired', 'expired');
+    }
+    const refreshToken = token.refresh_token ?? payload.refreshToken;
+    this.links.set(roomCode, {
+      accessToken: token.access_token,
+      refreshToken,
+      expiresAt: Date.now() + token.expires_in * 1000,
+    });
+    const accountName = payload.accountName;
+    return { accountName, link: this.seal({ v: 1, refreshToken, accountName }) };
+  }
+
+  private seal(payload: SealedPayload): string {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.sealKey, iv);
+    const data = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), data]).toString('base64url');
+  }
+
+  private unseal(link: string): SealedPayload | null {
+    try {
+      const raw = Buffer.from(link, 'base64url');
+      if (raw.length < 29) return null;
+      const decipher = createDecipheriv('aes-256-gcm', this.sealKey, raw.subarray(0, 12));
+      decipher.setAuthTag(raw.subarray(12, 28));
+      const json = Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8');
+      const payload = JSON.parse(json) as Partial<SealedPayload>;
+      if (payload.v !== 1 || typeof payload.refreshToken !== 'string' || typeof payload.accountName !== 'string') {
+        return null;
+      }
+      return { v: 1, refreshToken: payload.refreshToken, accountName: payload.accountName };
+    } catch {
+      return null;
+    }
   }
 
   isLinked(roomCode: string): boolean {
