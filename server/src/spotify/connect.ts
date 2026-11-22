@@ -19,7 +19,8 @@ import type { Lang, SpotifyDevice } from '../../../shared/types';
 const AUTHORIZE_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const API_BASE = 'https://api.spotify.com/v1';
-const SCOPES = ['user-read-private', 'user-read-playback-state', 'user-modify-playback-state'];
+// streaming + user-read-email: the TV screen plays in the browser (Web Playback SDK)
+const SCOPES = ['user-read-private', 'user-read-email', 'user-read-playback-state', 'user-modify-playback-state', 'streaming'];
 /** A login not finished within this time is dropped */
 const LOGIN_TTL_MS = 10 * 60 * 1000;
 /** Refresh this long before the access token expires */
@@ -53,12 +54,19 @@ interface Link {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  /** Granted scopes, when Spotify said (logins from before 'streaming' lack it) */
+  scopes: string[] | null;
 }
 
 interface TokenResponse {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
+  scope?: string;
+}
+
+function scopesOf(token: TokenResponse): string[] | null {
+  return token.scope ? token.scope.split(' ') : null;
 }
 
 interface ProfileResponse {
@@ -72,7 +80,7 @@ interface DevicesResponse {
 }
 
 /** What went wrong, so the result page can say it in the player's language */
-export type SpotifyConnectErrorCode = 'not_premium' | 'not_allowed' | 'expired' | 'other';
+export type SpotifyConnectErrorCode = 'not_premium' | 'not_allowed' | 'expired' | 'missing_scope' | 'other';
 
 export class SpotifyConnectError extends Error {
   constructor(message: string, readonly code: SpotifyConnectErrorCode = 'other') {
@@ -154,6 +162,7 @@ export class SpotifyConnect {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
       expiresAt: Date.now() + token.expires_in * 1000,
+      scopes: scopesOf(token),
     });
     const accountName = profile.display_name || profile.id;
     return { accountName, link: this.seal({ v: 1, refreshToken: token.refresh_token, accountName }) };
@@ -178,6 +187,7 @@ export class SpotifyConnect {
       accessToken: token.access_token,
       refreshToken,
       expiresAt: Date.now() + token.expires_in * 1000,
+      scopes: scopesOf(token),
     });
     const accountName = payload.accountName;
     return { accountName, link: this.seal({ v: 1, refreshToken, accountName }) };
@@ -205,6 +215,20 @@ export class SpotifyConnect {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Short-lived access token for the room's TV screen, which plays in the browser
+   * (Web Playback SDK). The only token that reaches a client — the owner allowed it for the TV.
+   */
+  async playerToken(roomCode: string): Promise<{ accessToken: string; expiresAt: number }> {
+    const accessToken = await this.accessToken(roomCode);
+    const link = this.links.get(roomCode);
+    if (!link) throw new SpotifyConnectError('No Spotify account linked');
+    if (link.scopes && !link.scopes.includes('streaming')) {
+      throw new SpotifyConnectError('Reconnect Spotify so the TV may play', 'missing_scope');
+    }
+    return { accessToken, expiresAt: link.expiresAt };
   }
 
   isLinked(roomCode: string): boolean {
@@ -270,6 +294,7 @@ export class SpotifyConnect {
       accessToken: token.access_token,
       refreshToken: token.refresh_token ?? link.refreshToken,
       expiresAt: Date.now() + token.expires_in * 1000,
+      scopes: scopesOf(token) ?? link.scopes,
     };
     // Unlinked while refreshing — don't resurrect it
     if (this.links.has(roomCode)) this.links.set(roomCode, refreshed);

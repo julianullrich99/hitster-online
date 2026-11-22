@@ -90,6 +90,11 @@ export interface RoomAudio {
   };
 }
 
+/** Answer to audio:player-token */
+export type SpotifyPlayerTokenResponse =
+  | { ok: true; accessToken: string; expiresAt: number }
+  | { ok: false; reason: 'not_linked' | 'missing_scope' | 'failed' };
+
 export interface Room {
   code: string;
   ownerId: string;
@@ -348,6 +353,15 @@ export interface ClientToServerEvents {
 
   /** Owner or Spotify linker unlinks the Spotify account; audio falls back to previews */
   'audio:unlink': () => void;
+
+  /**
+   * TV screen asks for a short-lived Spotify access token to play in the browser (Web Playback SDK).
+   * Observer sockets only; answered through the ack.
+   */
+  'audio:player-token': (ack: (res: SpotifyPlayerTokenResponse) => void) => void;
+
+  /** TV screen's in-browser Spotify player is ready — becomes the room's device unless another was picked */
+  'audio:tv-ready': (data: { deviceId: string; deviceName: string }) => void;
 
   /** A player links their remembered Spotify login (from audio:login-saved) to the room */
   'audio:restore-login': (data: { link: string }) => void;

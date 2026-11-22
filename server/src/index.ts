@@ -97,6 +97,9 @@ function setObserverCount(roomCode: string): void {
   io.to(roomCode).emit('room:updated', updated);
 }
 
+// roomCode → Spotify device id of the TV screen's in-browser player (a TV reload makes a new one)
+const tvDevices = new Map<string, string>();
+
 // roomCode → remaining deck
 const liveDecks = new Map<string, ReturnType<typeof engine.drawCard>['remaining']>();
 
@@ -228,7 +231,7 @@ app.get('/api/spotify/connect/callback', async (req, res) => {
   } catch (err) {
     console.warn('[Spotify Connect] login failed:', err instanceof Error ? err.message : err);
     const code = err instanceof SpotifyConnectError ? err.code : 'other';
-    connectResultPage(res, 400, lang, code === 'other' ? 'failed' : code);
+    connectResultPage(res, 400, lang, code === 'not_premium' || code === 'not_allowed' ? code : 'failed');
   }
 });
 
@@ -278,6 +281,7 @@ function purgeRoomRuntime(roomCode: string): void {
   if (room) pauseSpeaker(room);
   spotifyConnect.unlink(roomCode);
   turnSpeakers.delete(roomCode);
+  tvDevices.delete(roomCode);
   clearPlaceTurnTimer(roomCode);
   clearChallengeTimer(roomCode);
   clearFlipAdvanceTimer(roomCode);
@@ -1216,6 +1220,35 @@ io.on('connection', (socket) => {
     } catch (err) {
       socket.emit('error', err instanceof Error ? err.message : 'Could not select the Spotify device');
     }
+  });
+
+  // TV screen: in-browser Spotify player (Web Playback SDK)
+  socket.on('audio:player-token', async (ack) => {
+    if (typeof ack !== 'function') return;
+    const roomCode = observerSockets.get(socket.id);
+    if (!roomCode || !spotifyConnect.isLinked(roomCode)) { ack({ ok: false, reason: 'not_linked' }); return; }
+    try {
+      const token = await spotifyConnect.playerToken(roomCode);
+      ack({ ok: true, ...token });
+    } catch (err) {
+      const missing = err instanceof SpotifyConnectError && err.code === 'missing_scope';
+      ack({ ok: false, reason: missing ? 'missing_scope' : 'failed' });
+    }
+  });
+
+  socket.on('audio:tv-ready', (data) => {
+    const roomCode = observerSockets.get(socket.id);
+    const room = roomCode ? store.get(roomCode) : undefined;
+    if (!room || !room.audio.spotify || typeof data?.deviceId !== 'string') return;
+    const previousTv = tvDevices.get(room.code);
+    tvDevices.set(room.code, data.deviceId);
+    // Take over when nothing is picked yet, or the TV reloaded (its old device is gone)
+    const current = room.audio.spotify.deviceId;
+    if (current !== null && current !== previousTv) return;
+    const name = String(data.deviceName ?? 'TV').slice(0, 60);
+    const updated = engine.setSpotifyDevice(room, data.deviceId, name);
+    store.set(updated);
+    io.to(room.code).emit('room:updated', updated);
   });
 
   socket.on('audio:restore-login', async (data) => {

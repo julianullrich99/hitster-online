@@ -243,6 +243,12 @@ export const de = {
   // ── Observer screen (TV) ──
   'tv.joinOn': 'Mitspielen auf {host} mit dem Code {code}',
   'tv.tapForSound': '🔊 Einmal klicken oder eine Taste drücken, um den Ton auf diesem Bildschirm einzuschalten',
+  'tv.spotify.starting': '🎵 Spotify-Player auf diesem Bildschirm startet…',
+  'tv.spotify.ready': '🎵 Ganze Songs laufen auf diesem Bildschirm (Spotify)',
+  'tv.spotify.unsupported': 'Dieser Browser kann Spotify nicht abspielen – nimm Chrome, Edge oder Firefox am PC.',
+  'tv.spotify.reconnect': 'Spotify bitte einmal neu verbinden („Anderes Konto“), damit der Bildschirm abspielen darf.',
+  'tv.spotify.not_premium': 'Für ganze Songs auf diesem Bildschirm braucht das Spotify-Konto Premium.',
+  'tv.spotify.failed': 'Der Spotify-Player auf diesem Bildschirm konnte nicht starten.',
   'tv.open': 'Öffne {host}',
   'tv.enterCode': 'und gib den Code ein',
   'tv.waitingPlayers': 'Warte auf Mitspieler…',

@@ -231,6 +231,12 @@ export const en: Messages = {
   // ── Observer screen (TV) ──
   'tv.joinOn': 'Join on {host} with code {code}',
   'tv.tapForSound': '🔊 Click or press any key once to enable sound on this screen',
+  'tv.spotify.starting': '🎵 Starting the Spotify player on this screen…',
+  'tv.spotify.ready': '🎵 Full songs play on this screen (Spotify)',
+  'tv.spotify.unsupported': 'This browser can\'t play Spotify — use Chrome, Edge or Firefox on a computer.',
+  'tv.spotify.reconnect': 'Connect Spotify once more ("Other account") so this screen may play.',
+  'tv.spotify.not_premium': 'Full songs on this screen need a Spotify Premium account.',
+  'tv.spotify.failed': 'The Spotify player on this screen could not start.',
   'tv.open': 'Open {host}',
   'tv.enterCode': 'and enter the code',
   'tv.waitingPlayers': 'Waiting for players…',

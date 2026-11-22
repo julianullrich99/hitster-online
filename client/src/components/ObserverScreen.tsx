@@ -16,6 +16,7 @@ import {
 } from './GameRoom';
 import { useT, withNodes, type TFunction } from '../i18n';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
+import { useSpotifyTvPlayer } from '../audio/spotifyTvPlayer';
 
 /**
  * Observer screen (TV): the whole room at a glance, big enough to read from the sofa.
@@ -111,17 +112,21 @@ export default function ObserverScreen({
   const activeName = activePlayerDisplayName(room, resolvedActive);
   const joinHost = window.location.host;
 
+  // Full songs play right in this tab when a Spotify account is linked
+  const tvPlayer = useSpotifyTvPlayer(room);
+  const activateTvPlayer = tvPlayer.activate;
+
   // TVs need one click/remote press before the browser lets them play sound
   const [needsTap, setNeedsTap] = useState(true);
   useEffect(() => {
-    const onGesture = () => setNeedsTap(false);
-    window.addEventListener('pointerdown', onGesture, { once: true });
-    window.addEventListener('keydown', onGesture, { once: true });
+    const onGesture = () => { setNeedsTap(false); activateTvPlayer(); };
+    window.addEventListener('pointerdown', onGesture);
+    window.addEventListener('keydown', onGesture);
     return () => {
       window.removeEventListener('pointerdown', onGesture);
       window.removeEventListener('keydown', onGesture);
     };
-  }, []);
+  }, [activateTvPlayer]);
 
   // Reveal snapshot, shown for the reveal time (same as on the phones)
   const [reveal, setReveal] = useState<{ card: Card; correct: boolean; position: number; timedOut: boolean; entity: string } | null>(null);
@@ -183,8 +188,17 @@ export default function ObserverScreen({
     </header>
   );
 
-  const tapBanner = needsTap && (
-    <div className="tv-tap-banner" role="status">{t('tv.tapForSound')}</div>
+  const tvPlayerNote = tvPlayer.status !== 'off' && (
+    <div className={`tv-spotify-status tv-spotify-status--${tvPlayer.status}`} data-testid="tv-spotify-status">
+      {t(`tv.spotify.${tvPlayer.status}`)}
+    </div>
+  );
+
+  const tapBanner = (
+    <>
+      {needsTap && <div className="tv-tap-banner" role="status">{t('tv.tapForSound')}</div>}
+      {tvPlayerNote}
+    </>
   );
 
   // Lobby / between rounds: big join instructions

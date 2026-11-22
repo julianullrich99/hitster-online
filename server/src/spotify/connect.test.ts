@@ -168,4 +168,26 @@ describe('SpotifyConnect', () => {
     await expect(c2.restoreLogin('X', saved.link)).rejects.toMatchObject({ code: 'expired' });
     expect(c2.isLinked('X')).toBe(false);
   });
+
+  it('hands the TV a player token only when the login allows streaming', async () => {
+    const withScope = await linked({});
+    // TOKEN has no scope field → unknown, allowed
+    await expect(withScope.connect.playerToken('ROOM')).resolves.toMatchObject({ accessToken: 'at' });
+
+    const f = fakeFetch({
+      'POST accounts.spotify.com/api/token': [{ status: 200, body: { ...TOKEN, scope: 'user-modify-playback-state' } }],
+      'GET /v1/me': [{ status: 200, body: { id: 'alice', display_name: 'Alice', product: 'premium' } }],
+    });
+    const old = new SpotifyConnect('id', 'secret', f.fn);
+    const state = new URL(old.beginLogin('ROOM', 'p1', 'https://x/cb')).searchParams.get('state')!;
+    await old.completeLogin(old.takeLogin(state)!, 'code');
+    await expect(old.playerToken('ROOM')).rejects.toMatchObject({ code: 'missing_scope' });
+    await expect(old.playerToken('NONE')).rejects.toThrow('No Spotify account linked');
+  });
+
+  it('asks Spotify for the streaming scope (TV playback in the browser)', () => {
+    const connect = new SpotifyConnect('id', 'secret', fakeFetch({}).fn);
+    const scope = new URL(connect.beginLogin('ROOM', 'p1', 'https://x/cb')).searchParams.get('scope')!;
+    expect(scope.split(' ')).toEqual(expect.arrayContaining(['streaming', 'user-read-email']));
+  });
 });

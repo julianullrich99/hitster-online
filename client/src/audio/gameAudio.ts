@@ -69,7 +69,16 @@ export function isDeviceMuted(): boolean {
   return gameAudio?.muted ?? false;
 }
 
+const muteListeners = new Set<(muted: boolean) => void>();
+
 export function setDeviceMuted(muted: boolean): void {
   if (gameAudio) gameAudio.muted = muted;
   try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* storage blocked */ }
+  muteListeners.forEach(fn => fn(muted));
+}
+
+/** Other players on this device (the TV's Spotify player) follow the mute toggle */
+export function onDeviceMutedChange(fn: (muted: boolean) => void): () => void {
+  muteListeners.add(fn);
+  return () => { muteListeners.delete(fn); };
 }
